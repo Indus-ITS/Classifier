@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+output/*
+!output/.gitkeep
+.idea/
+.vscode/
+*.tmp
+sample_test.py
+sample_test2.py
+sample_test3.py
