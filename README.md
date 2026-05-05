@@ -56,7 +56,7 @@ classifier/
 │   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
 │   ├── core/                         # pure logic (scoring, extraction, normalisation, ...)
 │   ├── pipeline/                     # orchestration (enrich, audit, selftest)
-│   ├── io/                           # file readers/writers (schedule, dossier, transmittals, overrides, csv)
+│   ├── io/                           # file readers/writers (schedule, dossier, transmittals, csv)
 │   ├── routing/                      # sort-files matching/planning/execution
 │   ├── cli/                          # console entry points + presentation helpers
 │   └── tools/                        # offline diagnostic commands
@@ -71,7 +71,6 @@ classifier/
 │   ├── undefined_for_review.csv      # rows that need human review
 │   └── helpers/                      # diagnostic outputs (labelled_corpus.csv, evaluation_report.txt, ...)
 │
-├── overrides/                        # placeholder for cust_ref → bucket overrides
 └── docs/
     ├── specs/                        # design docs
     └── plans/                        # implementation plans

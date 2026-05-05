@@ -7,7 +7,6 @@ from __future__ import annotations
 SCHEDULE_PATH = "input/schedule.xls"
 DOSSIER_PATH = "input/dossier.xlsx"
 TREE_PATH = "input/transmittals.txt"
-OVERRIDES_PATH = "overrides/ref_to_bucket.csv"
 OUTPUT_DIR = "output"
 
 # -------------------------------------------------------------------------

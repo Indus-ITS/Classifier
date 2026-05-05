@@ -5,8 +5,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-def write_audit(*, rows: list, schedule_df, override_count: int,
-                override_unknown_refs: list, path) -> None:
+def write_audit(*, rows: list, schedule_df, path) -> None:
     """Write audit text per spec section 10."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -138,12 +137,5 @@ def write_audit(*, rows: list, schedule_df, override_count: int,
             continue
         seen.add(key)
         lines.append(f"  {key[0]}{key[1]}")
-
-    lines.append("\n=== Override hits ===")
-    lines.append(f"Overrides applied: {override_count}")
-    if override_unknown_refs:
-        lines.append("Overrides with unknown refs (no effect):")
-        for ref in override_unknown_refs:
-            lines.append(f"  override defined for unknown ref {ref} - no effect")
 
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")

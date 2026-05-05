@@ -24,18 +24,15 @@ from classifier.core.revisions import (
 from classifier.core.scoring import pick_bucket, score_buckets
 from classifier.core.targets import build_target_paths, detect_target_collisions
 from classifier.io.dossier_reader import load_dossier
-from classifier.io.overrides_reader import load_overrides
 from classifier.io.schedule_reader import load_schedule
 from classifier.io.transmittals import parse_transmittals
 
 
-def enrich_files(*, schedule_path, dossier_path, tree_path,
-                 overrides_path) -> list:
+def enrich_files(*, schedule_path, dossier_path, tree_path) -> list:
     """Run the full Phase-1 pipeline. Returns list of populated row dicts."""
     schedule_df = load_schedule(schedule_path)
     dossier_df = load_dossier(dossier_path)
     raw = parse_transmittals(tree_path)
-    overrides = load_overrides(overrides_path)
 
     schedule_disc = {r["cust_ref"]: r["discipline"] for _, r in schedule_df.iterrows()}
     schedule_rev = {r["cust_ref"]: r["schedule_rev"] for _, r in schedule_df.iterrows()}
@@ -109,13 +106,7 @@ def enrich_files(*, schedule_path, dossier_path, tree_path,
         r["pcs_doc_no"] = schedule_pcs.get(cust_ref, "")
         r["schedule_rev"] = schedule_rev.get(cust_ref, "")
 
-        if cust_ref and cust_ref in overrides:
-            bucket = overrides[cust_ref]
-            bucket_source = "override"
-            confidence = "high"
-            score_sum = score_top = 0
-            runner_up, runner_score = "", 0
-        elif r["is_archive"]:
+        if r["is_archive"]:
             bucket = "Documents"
             bucket_source = "archive"
             confidence = "low"

@@ -9,7 +9,6 @@ from classifier.config.paths import (
     SCHEDULE_PATH,
     DOSSIER_PATH,
     TREE_PATH,
-    OVERRIDES_PATH,
     OUTPUT_DIR,
     GATE_THRESHOLD,
 )
@@ -24,7 +23,7 @@ from classifier.config.patterns import REF_PATTERN, CRS_PATTERN, COVER_PATTERN
 from classifier.config.schema import CSV_COLUMNS
 
 __all__ = [
-    "SCHEDULE_PATH", "DOSSIER_PATH", "TREE_PATH", "OVERRIDES_PATH",
+    "SCHEDULE_PATH", "DOSSIER_PATH", "TREE_PATH",
     "OUTPUT_DIR", "GATE_THRESHOLD",
     "BUCKETS", "BUCKET_TO_CLASS", "TYPE_TO_BUCKET", "BUCKET_PRIMARY_CODE",
     "KEYWORD_RULES", "DISCIPLINE_KEYWORD_RULES",
