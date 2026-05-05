@@ -43,44 +43,34 @@ def classify_title(title: str) -> str:
     return fold_to_class(pick, BUCKET_TO_CLASS)
 
 
-def _iter_source_files(source_dir: Path, recursive: bool) -> list[Path]:
-    """Yield files under source_dir.
-
-    - recursive=False: top-level only (skips subdirs).
-    - recursive=True: walks all subdirs but skips any file whose path
-      passes through a class folder (Drawings/Documents/Undefined/
-      Unmatched). This makes recursive in-place re-runs safe: files
-      already sorted into class folders are not re-processed.
+def _iter_source_files(source_dir: Path) -> list[Path]:
+    """Yield files under source_dir recursively. Files already inside a
+    class folder (Drawings/Documents/Undefined/Unmatched) are skipped so
+    re-runs are safe.
     """
-    if recursive:
-        out: list[Path] = []
-        for f in source_dir.rglob("*"):
-            if not f.is_file():
-                continue
-            try:
-                rel = f.relative_to(source_dir)
-            except ValueError:
-                continue
-            if any(part in _CLASS_DIR_NAMES for part in rel.parts[:-1]):
-                continue
-            out.append(f)
-        return sorted(out)
-    return sorted(f for f in source_dir.iterdir() if f.is_file())
+    out: list[Path] = []
+    for f in source_dir.rglob("*"):
+        if not f.is_file():
+            continue
+        try:
+            rel = f.relative_to(source_dir)
+        except ValueError:
+            continue
+        if any(part in _CLASS_DIR_NAMES for part in rel.parts[:-1]):
+            continue
+        out.append(f)
+    return sorted(out)
 
 
 def match_files(
     schedule_refs: dict[str, tuple[str, str]],
     source_dir: Path,
-    recursive: bool = False,
+    files: list[Path] | None = None,
 ) -> MatchResult:
-    """For every file in source_dir, extract the cust_ref from the filename
-    and look it up in schedule_refs. Files where no cust_ref is
-    recognizable, or the cust_ref isn't in the schedule, end up in the
-    unmatched lists.
+    """Match files against the schedule by cust_ref.
 
-    recursive: if True, walks subdirectories. Files already inside
-    class folders (Drawings/Documents/Undefined/Unmatched) are skipped
-    so recursive re-runs don't re-route already-sorted files.
+    If ``files`` is provided, match those exact paths (used after dedup).
+    Otherwise walk ``source_dir`` recursively, skipping class folders.
     """
     if not source_dir.is_dir():
         raise ValueError(f"source_dir is not a directory: {source_dir}")
@@ -90,7 +80,8 @@ def match_files(
     unmatched_not_in_schedule: list[Path] = []
     refs_seen: set[str] = set()
 
-    for f in _iter_source_files(source_dir, recursive):
+    iter_files = files if files is not None else _iter_source_files(source_dir)
+    for f in iter_files:
         ref = extract_ref(f.name)
         if not ref:
             unmatched_unrecognized.append(f)
