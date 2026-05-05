@@ -27,17 +27,23 @@ _REV_TAIL_FALLBACK = re.compile(
 def parse_stem(stem: str) -> tuple[str, str | None]:
     """Return ``(group_key, revision)`` for a filename stem.
 
-    Anchors on the cust_ref so the trailing 4-digit segment of a bare
-    cust_ref is never misread as a revision. Falls back to a whole-stem
-    strip when no cust_ref is present.
+    When a ``cust_ref`` is present anywhere in the stem, it is the group
+    key — every file sharing that cust_ref is the same logical document,
+    regardless of trailing descriptive text (e.g.
+    ``16-01-39-2602- SPI EXECUTION PHILOSOPHY_IFA.docx`` and
+    ``16-01-39-2602-B.pdf`` both group under ``16-01-39-2602``).
+
+    Revision parsing only fires when the tail after the cust_ref is a
+    bare rev token like ``-B``, ``_1``, or ``_Rev.A``. Otherwise the
+    revision is reported as ``None`` and downstream tie-breaking falls
+    back to format priority.
     """
     m = CUST_REF.search(stem)
     if m:
-        prefix, suffix = stem[: m.end()], stem[m.end() :]
+        suffix = stem[m.end() :]
         rev = _REV_AFTER_CUST_REF.match(suffix)
-        if rev:
-            return prefix.strip().lower(), rev.group(1).upper()
-        return stem.strip().lower(), None
+        revision = rev.group(1).upper() if rev else None
+        return m.group(0).lower(), revision
     rev = _REV_TAIL_FALLBACK.search(stem)
     if rev:
         return stem[: rev.start()].strip().lower(), rev.group(1).upper()
