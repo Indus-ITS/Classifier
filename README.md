@@ -51,7 +51,6 @@ options.
 classifier/
 ├── pyproject.toml                    # package metadata + console scripts
 ├── README.md
-├── requirements.txt
 │
 ├── src/classifier/                   # the package
 │   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
