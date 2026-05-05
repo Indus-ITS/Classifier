@@ -15,74 +15,67 @@ review rather than being silently dumped into Documents.
 ## Quick start
 
 ```bash
-.venv/Scripts/pip install -r requirements.txt
+pip install -e .
 
 # 1. Classify schedule rows
-.venv/Scripts/python classifier.py
+classify
 
 # 2. (Optional) Sort the referenced files into class folders
-.venv/Scripts/python sort_files.py --schedule "input/To be classified/sahil schedule.xls" \
-                                    --source-dir /path/to/your/docs
+sort-files --schedule "input/To be classified/sahil schedule.xls" \
+           --source-dir /path/to/your/docs
 ```
 
-`classifier.py` reads every `*.xls*` under `input/To be classified/` and
+`classify` reads every `*.xls*` under `input/To be classified/` and
 writes [output/classified.csv](output/classified.csv).
 
-`sort_files.py` is an interactive CLI that takes the same schedule plus a
+`sort-files` is an interactive CLI that takes the same schedule plus a
 directory of files (named by `cust_ref`) and routes them into
 `Drawings/`, `Documents/`, `Undefined/`, `Unmatched/` either in-place or
 by copying to a destination directory. Run with `--help` for full
 options.
 
-## Entry points
+## Console scripts
 
-| Script | What it does | Output |
+| Command | What it does | Output |
 |---|---|---|
-| [classifier.py](classifier.py) | Classify schedule rows | [output/classified.csv](output/classified.csv) |
-| [sort_files.py](sort_files.py) | Interactive CLI: sort/copy files into class folders based on the schedule | files moved/copied into `Drawings/` `Documents/` `Undefined/` `Unmatched/` |
-| [helpers/harvest_labelled.py](helpers/harvest_labelled.py) | Build the 73k-row labelled corpus from `input/classified/` | [output/helpers/labelled_corpus.csv](output/helpers/labelled_corpus.csv) |
-| [helpers/evaluate_corpus.py](helpers/evaluate_corpus.py) | Measure classifier accuracy on the labelled corpus | [output/helpers/evaluation_report.txt](output/helpers/evaluation_report.txt) + per-row predictions CSV |
-| [helpers/dump_bucket_mapping.py](helpers/dump_bucket_mapping.py) | Dump the description → bucket → class mapping for senior review | [output/bucket_mapping.csv](output/bucket_mapping.csv) |
-| [helpers/dump_undefined.py](helpers/dump_undefined.py) | Filter `output/classified.csv` to just the rows where `class=Undefined` | [output/undefined_for_review.csv](output/undefined_for_review.csv) |
+| `classify` | Classify schedule rows | [output/classified.csv](output/classified.csv) |
+| `sort-files` | Interactive CLI: sort/copy files into class folders | files moved/copied into `Drawings/` `Documents/` `Undefined/` `Unmatched/` |
+| `harvest` | Build the labelled corpus from `input/classified/` | `output/helpers/labelled_corpus.csv` |
+| `evaluate` | Measure classifier accuracy on the labelled corpus | `output/helpers/evaluation_report.txt` + per-row predictions CSV |
+| `dump-buckets` | Dump the description → bucket → class mapping for senior review | `output/bucket_mapping.csv` |
+| `dump-undefined` | Filter `output/classified.csv` to just the rows where `class=Undefined` | `output/undefined_for_review.csv` |
 
 ## Layout
 
 ```
 classifier/
-├── classifier.py              # main classifier - run this
-├── sort_files.py              # interactive CLI to route files into class folders
-├── config.py                  # tunables: keyword bank, BUCKET_TO_CLASS fold,
-│                              #   discipline rules, regex patterns
+├── pyproject.toml                    # package metadata + console scripts
 ├── README.md
 ├── requirements.txt
 │
-├── helpers/                   # library + offline tools (not part of the main run)
-│   ├── classifier_lib.py      # bucket scoring, fold helper, ref/rev extraction
-│   ├── router_lib.py          # pure file-routing logic (used by sort_files.py)
-│   ├── harvest_labelled.py    # builds the labelled corpus from input/classified/
-│   ├── evaluate_corpus.py     # measures accuracy on the labelled corpus
-│   ├── dump_bucket_mapping.py # writes output/bucket_mapping.csv
-│   └── dump_undefined.py      # writes output/undefined_for_review.csv
+├── src/classifier/                   # the package
+│   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
+│   ├── core/                         # pure logic (scoring, extraction, normalisation, ...)
+│   ├── pipeline/                     # orchestration (enrich, audit, selftest)
+│   ├── io/                           # file readers/writers (schedule, dossier, transmittals, overrides, csv)
+│   ├── routing/                      # sort-files matching/planning/execution
+│   ├── cli/                          # console entry points + presentation helpers
+│   └── tools/                        # offline diagnostic commands
 │
 ├── input/
-│   ├── To be classified/      # *.xls schedule sheets to classify
-│   └── classified/            # labelled reference indices (drive the corpus)
+│   ├── To be classified/             # *.xls schedule sheets to classify
+│   └── classified/                   # labelled reference indices (drive the corpus)
 │
 ├── output/
-│   ├── classified.csv         # ← MAIN classifier output
-│   ├── bucket_mapping.csv     # description → bucket → class for senior review
-│   ├── undefined_for_review.csv  # rows that need human review
-│   └── helpers/               # diagnostic outputs
-│       ├── labelled_corpus.csv
-│       ├── labelled_predictions.csv
-│       ├── evaluation_report.txt
-│       └── dossier_selftest.txt
+│   ├── classified.csv                # ← MAIN classifier output
+│   ├── bucket_mapping.csv            # description → bucket → class for senior review
+│   ├── undefined_for_review.csv      # rows that need human review
+│   └── helpers/                      # diagnostic outputs (labelled_corpus.csv, evaluation_report.txt, ...)
 │
-├── overrides/                 # placeholder for cust_ref -> bucket overrides
-├── tests/                     # pytest suite (226 tests)
+├── overrides/                        # placeholder for cust_ref → bucket overrides
 └── docs/
-    ├── specs/                 # design docs (latest: 2026-05-01-two-class-fold-design.md)
-    └── plans/                 # implementation plans
+    ├── specs/                        # design docs
+    └── plans/                        # implementation plans
 ```
 
 ## Output schema — [output/classified.csv](output/classified.csv)
@@ -112,22 +105,22 @@ existing 10-bucket sub-routing remains available.
 **Filtering tip:** for clean classifications use `class != "Undefined"`;
 for items needing human review use `class == "Undefined"`.
 
-## sort_files.py — interactive file routing
+## sort-files — interactive file routing
 
 Given a schedule and a directory whose filenames embed the schedule's
 `cust_ref` numbers, this CLI splits the files into class folders.
 
 ```bash
 # Interactive (prompts for mode + destination + confirmation)
-python sort_files.py --schedule schedule.xls --source-dir ./docs
+sort-files --schedule schedule.xls --source-dir ./docs
 
 # Non-interactive copy
-python sort_files.py --schedule schedule.xls --source-dir ./docs \
-    --mode copy --dest-dir ./sorted --yes
+sort-files --schedule schedule.xls --source-dir ./docs \
+           --mode copy --dest-dir ./sorted --yes
 
 # Non-interactive in-place sort
-python sort_files.py --schedule schedule.xls --source-dir ./docs \
-    --mode in-place --yes
+sort-files --schedule schedule.xls --source-dir ./docs \
+           --mode in-place --yes
 ```
 
 | Flag | Purpose |
@@ -136,8 +129,8 @@ python sort_files.py --schedule schedule.xls --source-dir ./docs \
 | `--source-dir PATH` | Directory containing the files (top level only by default) |
 | `--recursive`, `-r` | Walk subdirectories. Files already inside class folders (`Drawings/`, `Documents/`, etc.) are skipped so re-runs are safe. |
 | `--clean-empty-dirs` | After execution, remove any subdirectories that are now empty. Useful with `--recursive --mode in-place` to clean up emptied transmittal folders. |
-| `--on-duplicate {error\|skip\|rename}` | What to do when two source files would land at the same destination (common with `--recursive` when the same document was re-sent across transmittals). `error` (default): abort with the collision list. `skip`: keep the first source by path order, drop the rest. `rename`: keep all by appending a numeric suffix (`foo.pdf`, `foo-2.pdf`, `foo-3.pdf`, ...). |
-| `--include-title` | Append the schedule's Title to the destination filename: `<original_stem> - <safe_title><ext>`. The title is sanitized for filesystem safety (path-unsafe chars → `_`) and truncated to `--title-max-len`. Files with no schedule match (Unmatched) keep their original name. |
+| `--on-duplicate {error\|skip\|rename}` | What to do when two source files would land at the same destination. `error` (default): abort. `skip`: keep first by path order. `rename`: append numeric suffix (`foo.pdf`, `foo-2.pdf`, ...). |
+| `--include-title` | Append the schedule's Title to the destination filename: `<original_stem> - <safe_title><ext>`. The title is sanitized for filesystem safety and truncated to `--title-max-len`. Files with no schedule match (Unmatched) keep their original name. |
 | `--title-max-len N` | Max characters of the title to include (default 100). |
 | `--mode {in-place\|copy}` | Skip the mode prompt |
 | `--dest-dir PATH` | Destination for copy mode (skips the dest prompt) |
@@ -156,23 +149,12 @@ filesystem safety (`ENGG QA/QC` → `ENGG_QA_QC`, missing → `_UNKNOWN`):
 │   ├── CIVIL/        matched, class==Drawings, discipline==CIVIL
 │   ├── PIPNG/
 │   ├── INST/
-│   ├── ELEC/
-│   ├── MECH/
-│   ├── PROC/
-│   ├── HSE/
-│   ├── ENGG_HSE/     ('ENGG HSE' sanitized)
-│   ├── ENGG_QA_QC/   ('ENGG QA/QC' sanitized)
 │   └── ...
 ├── Documents/
-│   ├── CIVIL/
-│   ├── PIPNG/
-│   ├── INST/
 │   └── ...
 ├── Undefined/        matched class==Undefined, still grouped by discipline
-│   ├── PIPNG/
-│   ├── INST/
 │   └── ...
-└── Unmatched/        no schedule match - kept flat (no discipline available)
+└── Unmatched/        no schedule match — kept flat (no discipline available)
     └── *.pdf
 ```
 
@@ -186,21 +168,22 @@ Safety:
 
 ## How to iterate on accuracy
 
-1. Edit keyword rules in [config.py](config.py) — `KEYWORD_RULES[bucket]`
-   is the main lever. Weights are 1-5; weight 5 is required for `high`
-   confidence.
-2. Re-run `python classifier.py` and inspect `output/classified.csv`.
+1. Edit keyword rules in
+   [src/classifier/config/keywords.py](src/classifier/config/keywords.py) —
+   `KEYWORD_RULES[bucket]` is the main lever. Weights are 1-5; weight 5
+   is required for `high` confidence.
+2. Re-run `classify` and inspect `output/classified.csv`.
 3. Check what's still falling through:
 
    ```bash
-   python helpers/dump_undefined.py     # writes output/undefined_for_review.csv
+   dump-undefined     # writes output/undefined_for_review.csv
    ```
 
-4. Measure regression-impact at scale on the 73k-row labelled corpus:
+4. Measure regression-impact at scale on the labelled corpus:
 
    ```bash
-   python helpers/harvest_labelled.py   # rebuilds output/helpers/labelled_corpus.csv
-   python helpers/evaluate_corpus.py    # writes evaluation_report.txt + per-row predictions
+   harvest    # rebuilds output/helpers/labelled_corpus.csv
+   evaluate   # writes evaluation_report.txt + per-row predictions
    ```
 
    The corpus is built from labelled reference indices under
@@ -208,8 +191,6 @@ Safety:
    indices). Each row's `expected_bucket` is derived from the project's
    own doc-type code, not from the title — so the measurement is
    independent of the keyword bank.
-
-5. Run unit tests with `.venv/Scripts/pytest -q`.
 
 ### Typo tolerance policy
 
@@ -221,57 +202,25 @@ the data (e.g. `arra?n?g(e)?ment` for ARRANGEMENT/ARRANGMENT/ARRAGEMENT,
 used** — it introduces unpredictable false positives that are expensive
 to debug. When a new typo surfaces in
 `output/undefined_for_review.csv`, the fix is to relax the relevant
-regex pattern and pin it with a regression test in
-[tests/test_keyword_bank.py](tests/test_keyword_bank.py).
+regex pattern in
+[src/classifier/config/keywords.py](src/classifier/config/keywords.py).
 
-## Tunables in `config.py`
+## Tunables
 
-| Constant | What it does |
-|---|---|
-| `BUCKETS` | The 10 internal content buckets (don't reorder) |
-| `BUCKET_TO_CLASS` | 10-bucket → 2-class fold (Drawings or Documents) |
-| `KEYWORD_RULES` | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
-| `TYPE_TO_BUCKET` | 3-letter dossier Type code → bucket |
-| `BUCKET_PRIMARY_CODE` | Bucket → 3-letter code used in proposed target filename |
-| `DISCIPLINE_KEYWORD_RULES` | `[(regex, discipline), ...]` — fallback discipline inference |
-| `REF_PATTERN`, `CRS_PATTERN`, `COVER_PATTERN` | Regex strings used by `helpers/classifier_lib.py` |
-| `GATE_THRESHOLD` | Self-test pass bar for the older 256-row dossier selftest |
-
-## Current quality (last measured)
-
-### On the 73,000-row labelled corpus
-| Metric | Value |
-|---|---|
-| **Class accuracy** (Drawings / Documents / Undefined) | **95.71%** |
-| Subtype accuracy (10 buckets) | 95.62% |
-| Drawings subtype recall | 94.7% |
-| Isometrics subtype recall | 100% |
-| Datasheets subtype recall | 88.7% |
-
-### On the live schedule output (4,027 rows)
-| Metric | Value |
-|---|---|
-| Drawings (class) | 2,624 (65.2%) |
-| Documents (class) | 1,392 (34.6%) |
-| **Undefined (class)** | **11 (0.3%)** — flagged for human review |
-| High-confidence rows | 69.9% |
-| Low-confidence rows | 4.6% |
-
-### Engineering hygiene
-- **226 tests passing** (unit + regression + router_lib)
-- Spec: [docs/specs/2026-05-01-two-class-fold-design.md](docs/specs/2026-05-01-two-class-fold-design.md)
-- Plan: [docs/plans/2026-05-01-two-class-fold.md](docs/plans/2026-05-01-two-class-fold.md)
-
-The 11 remaining Undefined rows are genuinely ambiguous from the title
-alone (area codes like `SY-RDS-1`, descriptive well titles, one-off
-correspondence) — they can't be reliably resolved by keyword
-classification and need either human review or doc-number-prefix
-decoding.
+| Constant | Where | What it does |
+|---|---|---|
+| `BUCKETS` | [config/buckets.py](src/classifier/config/buckets.py) | The 10 internal content buckets (don't reorder) |
+| `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 2-class fold (Drawings or Documents) |
+| `KEYWORD_RULES` | [config/keywords.py](src/classifier/config/keywords.py) | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
+| `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter dossier Type code → bucket |
+| `BUCKET_PRIMARY_CODE` | [config/buckets.py](src/classifier/config/buckets.py) | Bucket → 3-letter code used in proposed target filename |
+| `DISCIPLINE_KEYWORD_RULES` | [config/keywords.py](src/classifier/config/keywords.py) | `[(regex, discipline), ...]` — fallback discipline inference |
+| `REF_PATTERN`, `CRS_PATTERN`, `COVER_PATTERN` | [config/patterns.py](src/classifier/config/patterns.py) | Regex strings for ref / CRS / cover-sheet detection |
+| `GATE_THRESHOLD` | [config/paths.py](src/classifier/config/paths.py) | Self-test pass bar for the 256-row dossier selftest |
 
 ## Bucket → Class mapping
 
-The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS` in
-[config.py](config.py):
+The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS`:
 
 | Bucket | Class |
 |---|---|
@@ -288,31 +237,34 @@ The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS` in
 
 Plus the **Undefined** class is returned when `score_sum == 0` (no
 keyword fired). This is implemented in
-`helpers.classifier_lib.fold_to_class()` and used by both
-[classifier.py](classifier.py) and
-[helpers/evaluate_corpus.py](helpers/evaluate_corpus.py) so they apply
-the same rule.
+[`fold_to_class()`](src/classifier/core/scoring.py) and used by both
+`classify` and `evaluate` so they apply the same rule.
 
 For senior review of the underlying doc-code → bucket → class mapping,
-run `python helpers/dump_bucket_mapping.py` and share
-[output/bucket_mapping.csv](output/bucket_mapping.csv) (115 unique
-mappings, sorted by class then bucket).
+run `dump-buckets` and share
+[output/bucket_mapping.csv](output/bucket_mapping.csv) (sorted by class
+then bucket).
 
-## Tests
+## Architecture
 
-```bash
-.venv/Scripts/pytest -q
-# 226 passed
+The package is layered, with imports flowing in one direction only:
+
+```
+presentation (cli)
+    ↓
+application (routing, pipeline)
+    ↓
+domain (core)
+    ↓
+infrastructure (io)
 ```
 
-Test files:
-
-| File | Coverage |
-|---|---|
-| [tests/test_class_fold.py](tests/test_class_fold.py) | `BUCKET_TO_CLASS` mapping, `fold_to_class()` helper, end-to-end class derivation |
-| [tests/test_classify.py](tests/test_classify.py) | `score_buckets`, `pick_bucket`, form resolution, structural invariants |
-| [tests/test_extract.py](tests/test_extract.py) | `extract_ref`, `extract_letter_rev`, `extract_numeric_rev`, sibling-rev inheritance |
-| [tests/test_keyword_bank.py](tests/test_keyword_bank.py) | Real-data regression tests pinning every keyword fix |
-| [tests/test_normalise.py](tests/test_normalise.py) | `normalise_filename` (NFKC, dash variants, NBSP) |
-| [tests/test_regressions.py](tests/test_regressions.py) | Bug-anchored regressions for the original v3-output review |
-| [tests/test_router_lib.py](tests/test_router_lib.py) | File matching, plan building, collision detection, copy/move execution |
+- **`core/`** is pure logic: regex extraction, scoring, revisions,
+  target-path construction. No I/O, no upward imports.
+- **`io/`** wraps file readers/writers (`pandas.read_excel`, CSV).
+- **`pipeline/`** orchestrates `core/` + `io/` for the enrich/audit/selftest flows.
+- **`routing/`** holds the file-routing logic for `sort-files`
+  (matching, plan, analysis, resolution, execute).
+- **`cli/`** is presentation only — argparse, prompts, ANSI colors,
+  progress bars, formatted reports.
+- **`tools/`** is the home of standalone diagnostic commands.
