@@ -1,0 +1,116 @@
+description,mapped_bucket,mapped_class,status,code_count
+Alignment / Layout Drawing,Drawings,Drawings,ok,1
+All Structural and Civil Drawings,Drawings,Drawings,ok,1
+Architectural Drawings,Drawings,Drawings,ok,1
+Block Diagram,Drawings,Drawings,ok,1
+Building Management System Drawings,Drawings,Drawings,ok,1
+Cathodic Protection Drawings,Drawings,Drawings,ok,1
+Cause & Effect Diagram,Drawings,Drawings,ok,1
+Cause & Effect/ Logic/ Ladder Diagrams/ Software Configuration Diagrams And relay Schematics,Drawings,Drawings,ok,1
+Control Room/ Control Panel/ Auxiliary Racks Layouts,Drawings,Drawings,ok,1
+Detail / Working Drawing,Drawings,Drawings,ok,1
+Drawing (general),Drawings,Drawings,ok,1
+"Elect. Equip., Location & cable Routing Layouts, Substation/ Switchyard Layouts & cable Block Diagram",Drawings,Drawings,ok,1
+Electrical Drawings For Building Services,Drawings,Drawings,ok,1
+Electrical Equipment Diagram,Drawings,Drawings,ok,1
+Electrical Panel Layouts,Drawings,Drawings,ok,1
+"Equipment and Outlet Layouts Telephone, Data, PA and MATV Services",Drawings,Drawings,ok,1
+Equipment Drawings,Drawings,Drawings,ok,1
+Field Layouts & Terminal Layouts,Drawings,Drawings,ok,1
+Field Sub-Area Plans,Drawings,Drawings,ok,1
+Fire & Gas Detectors Location Layouts (Including Building Services),Drawings,Drawings,ok,1
+Fire Fighting Layout,Drawings,Drawings,ok,1
+General Arrangement Drawing,Drawings,Drawings,ok,1
+General Arrangement – Civil,Drawings,Drawings,ok,1
+General Arrangement – Piping,Drawings,Drawings,ok,1
+Hazardous Area Classification,Drawings,Drawings,ok,1
+Hazardous Area Drawing,Drawings,Drawings,ok,1
+HVAC Equipment Drawings,Drawings,Drawings,ok,1
+Instrument Hook-Up Diagrams (Process & Pneumatic)/ Installations Drawings,Drawings,Drawings,ok,1
+Instrument Interconn./ Schematic/ Termination/ Wiring Diagrams,Drawings,Drawings,ok,1
+Instrument Location Layouts,Drawings,Drawings,ok,1
+Instrumentation & Fire Gas Cable Routing Layouts & Cable Block Diagrams,Drawings,Drawings,ok,1
+Instrumentation Equipment Drawings,Drawings,Drawings,ok,1
+"Key Single Line Diagrams, SLDs & Protection & Metering Diagrams",Drawings,Drawings,ok,1
+Line Routing Plans,Drawings,Drawings,ok,1
+Loop Diagrams,Drawings,Drawings,ok,1
+"Maps, Topographic drawings, Grading Plan, Leveling & Surveys, Irrigation, Landscaping",Drawings,Drawings,ok,1
+Mechanical Sketch / Mechanical Flow Diagram,Drawings,Drawings,ok,1
+Overall Telecom. Equipment and Cable Routing Layout,Drawings,Drawings,ok,1
+Overhead Transmission Lines Drawings,Drawings,Drawings,ok,1
+PFD & P&ID,Drawings,Drawings,ok,1
+Pipe Supports,Drawings,Drawings,ok,1
+Pipeline Profiles & Details,Drawings,Drawings,ok,1
+Piping & Instrumentation Diagram,Drawings,Drawings,ok,1
+Piping For Building Services,Drawings,Drawings,ok,1
+Piping Layout “Elevations”,Drawings,Drawings,ok,1
+Piping Layouts,Drawings,Drawings,ok,1
+Plot Plan Drawing,Drawings,Drawings,ok,1
+Plot Plans,Drawings,Drawings,ok,1
+Process Flow Diagram,Drawings,Drawings,ok,1
+Process Safety / Safeguarding Flow,Drawings,Drawings,ok,1
+Safety Equipment Drawings,Drawings,Drawings,ok,1
+Safety Equipment Layout,Drawings,Drawings,ok,1
+Schematic Wiring/ Interconnection/ Circuit/ Termination/ Sequence Diagrams/ Elect. Logic Diagrams,Drawings,Drawings,ok,1
+Single Line Diagram,Drawings,Drawings,ok,1
+Site Layouts & Field Area Layouts,Drawings,Drawings,ok,1
+Standard Drawing,Drawings,Drawings,ok,1
+"Telecom. Line Diagram, Telecom Block Diagram, Telecom Wiring/ Interconnection Diagram Telecom Panels Layout",Drawings,Drawings,ok,1
+Vessels & Tank’s Drawings,Drawings,Drawings,ok,1
+Isometrics,Isometrics,Drawings,ok,1
+Data Sheets,Datasheets,Documents,ok,1
+Electrical Data Sheets,Datasheets,Documents,ok,1
+Equipment Data Sheet,Datasheets,Documents,ok,1
+Equipment Data Sheets,Datasheets,Documents,ok,1
+Instrument Data Sheets,Datasheets,Documents,ok,1
+Instrumentation Engineering Sheets,Datasheets,Documents,ok,1
+Safety Equipment Data Sheets,Datasheets,Documents,ok,1
+Telecommunication Data Sheets,Datasheets,Documents,ok,1
+Vessels & Tank’s Data Sheets,Datasheets,Documents,ok,1
+Civil Specifications,Specifications,Documents,ok,1
+Electrical Specifications,Specifications,Documents,ok,1
+Equipment Specifications,Specifications,Documents,ok,1
+General Specification,Specifications,Documents,ok,1
+Instrument Specifications,Specifications,Documents,ok,1
+Piping Specifications,Specifications,Documents,ok,1
+Specification,Specifications,Documents,ok,1
+Specifications,Specifications,Documents,ok,1
+Specifications/ Standards / Procedures,Specifications,Documents,ok,1
+Standard / Specification,Specifications,Documents,ok,1
+Telecommunication Specifications,Specifications,Documents,ok,1
+Vessels & Tank’s Specification,Specifications,Documents,ok,1
+Calculation,Calculations,Documents,ok,1
+Basis of Design,Reports,Documents,ok,1
+Hazop/ Hazan Studies And Technical Audits/ Safety Audits & Quality Assurances/ Project Quality Plan/ Commissioning,Reports,Documents,ok,1
+Philosophy & Project definition Reports & General Reports,Reports,Documents,ok,1
+Report,Reports,Documents,ok,1
+Scope of Work,Reports,Documents,ok,1
+Scope Of Works/ Procurement Packages/ Manufacturing/ Construction Records Books,Reports,Documents,ok,1
+Bill of Materials,Lists_MTOs_BOMs,Documents,ok,1
+Bill Of Materials/ Tie-in Schedules,Lists_MTOs_BOMs,Documents,ok,1
+Electrical Load Lists,Lists_MTOs_BOMs,Documents,ok,1
+Equipment Schedules,Lists_MTOs_BOMs,Documents,ok,1
+Index,Lists_MTOs_BOMs,Documents,ok,1
+Line  List/Schedules,Lists_MTOs_BOMs,Documents,ok,1
+List,Lists_MTOs_BOMs,Documents,ok,1
+Lists/ Schedules/ Bill Of Material,Lists_MTOs_BOMs,Documents,ok,1
+Lists/ Schedules/ Bill Of Materials,Lists_MTOs_BOMs,Documents,ok,1
+Lists/Schedules/Bill Of Materials,Lists_MTOs_BOMs,Documents,ok,1
+Material Take-Off,Lists_MTOs_BOMs,Documents,ok,1
+Register,Lists_MTOs_BOMs,Documents,ok,1
+Schedule,Lists_MTOs_BOMs,Documents,ok,1
+Schedules & Bill Of Materials,Lists_MTOs_BOMs,Documents,ok,1
+Engineering Procedures And Working Procedures,Procedures_Plans,Documents,ok,1
+Philosophy,Procedures_Plans,Documents,ok,1
+Plan,Procedures_Plans,Documents,ok,1
+Procedure,Procedures_Plans,Documents,ok,1
+Catalogue,Documents,Documents,ok,1
+Engineering Dossiers/ Technical Proposal,Documents,Documents,ok,1
+Finance Documents,Documents,Documents,ok,1
+"Manuals (Engg., Operating Maintenance, Safety, Etc..)",Documents,Documents,ok,1
+Requisition (e.g. Material Requisition),Documents,Documents,ok,1
+Terms Of Reference/ Contract Documents/ Tender Documents/ Minor Work Order/ Task Order Justification,Documents,Documents,ok,1
+Vendor Data Books,Documents,Documents,ok,1
+-,,,ambiguous_skipped,1
+Miscellaneous,,,ambiguous_skipped,9
+Miscellaneous/Stress Analysis Reports,,,ambiguous_skipped,1
