@@ -37,3 +37,72 @@ def test_parse_stem_no_cust_ref_fallback():
 
 def test_parse_stem_no_cust_ref_no_rev():
     assert parse_stem("Some Random File") == ("some random file", None)
+
+
+from classifier.routing.dedup import group_and_pick, FileEntry, DedupResult
+
+
+def _p(name: str) -> Path:
+    return Path("/src") / name
+
+
+def test_group_and_pick_pdf_beats_docx_same_rev():
+    files = [_p("16-01-39-2602-B.pdf"), _p("16-01-39-2602-B.docx")]
+    result = group_and_pick(files)
+    assert len(result) == 1
+    [(_, r)] = result.items()
+    assert r.primary == _p("16-01-39-2602-B.pdf")
+    assert list(r.related) == [_p("16-01-39-2602-B.docx")]
+
+
+def test_group_and_pick_digit_rev_beats_letter_rev():
+    files = [_p("16-99-90-2601-B.docx"), _p("16-99-90-2601-1.pdf")]
+    result = group_and_pick(files)
+    [(_, r)] = result.items()
+    assert r.primary == _p("16-99-90-2601-1.pdf")
+    assert _p("16-99-90-2601-B.docx") in r.related
+
+
+def test_group_and_pick_higher_letter_wins():
+    files = [_p("16-99-90-2601-A.pdf"), _p("16-99-90-2601-B.pdf")]
+    result = group_and_pick(files)
+    [(_, r)] = result.items()
+    assert r.primary == _p("16-99-90-2601-B.pdf")
+
+
+def test_group_and_pick_doc_beats_xls():
+    files = [_p("16-01-27-2604_Rev.A.xlsx"), _p("16-01-27-2604-A.doc")]
+    result = group_and_pick(files)
+    [(_, r)] = result.items()
+    assert r.primary == _p("16-01-27-2604-A.doc")
+
+
+def test_group_and_pick_skips_non_candidate_extensions_as_winners():
+    files = [
+        _p("16-99-91-2620-A.dwg"),
+        _p("16-99-91-2620-A.pdf"),
+    ]
+    result = group_and_pick(files)
+    [(_, r)] = result.items()
+    assert r.primary == _p("16-99-91-2620-A.pdf")
+    assert _p("16-99-91-2620-A.dwg") in r.related
+
+
+def test_group_and_pick_group_with_only_non_candidate_has_no_winner():
+    files = [_p("16-99-91-2620-A.dwg"), _p("16-99-91-2620-A.rar")]
+    result = group_and_pick(files)
+    assert result == {}
+
+
+def test_group_and_pick_xlsx_only_group_still_wins():
+    files = [_p("CRS 16-99-90-2601-B.xlsx")]
+    result = group_and_pick(files)
+    [(_, r)] = result.items()
+    assert r.primary == _p("CRS 16-99-90-2601-B.xlsx")
+    assert r.related == ()
+
+
+def test_group_and_pick_deterministic_lexical_tiebreak():
+    files = [_p("a.pdf"), _p("b.pdf")]
+    result = group_and_pick(files)
+    assert len(result) == 2
