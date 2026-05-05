@@ -1,0 +1,24 @@
+[project]
+name = "classifier"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "openpyxl",
+    "xlrd",
+]
+
+[project.scripts]
+classify       = "classifier.cli.classify:main"
+sort-files     = "classifier.cli.sort:main"
+dump-buckets   = "classifier.tools.dump_buckets:main"
+dump-undefined = "classifier.tools.dump_undefined:main"
+evaluate       = "classifier.tools.evaluate:main"
+harvest        = "classifier.tools.harvest:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
