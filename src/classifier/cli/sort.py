@@ -1,28 +1,19 @@
 """Interactive CLI to sort schedule-referenced files into class folders.
 
-Reads a schedule.xls and a directory of files named by reference number,
-matches them, then either sorts in-place or copies into a destination
-folder layout:
+Reads a schedule.xls and a directory of files named by reference number.
+For each logical document (group of files that share a stem after the
+revision suffix is stripped), one winner is copied: latest revision in
+the preferred format (pdf > doc/docx > xls/xlsx). Everything else
+(older revisions, alternate formats, .dwg, .rar, attachments) is
+recorded in <dest>/related-documents.xlsx.
 
-    Drawings/      - matched, class==Drawings
-    Documents/     - matched, class==Documents
-    Undefined/     - matched, class==Undefined (no keyword fired)
-    Unmatched/     - cust_ref not found in schedule (or no ref in filename)
+Resulting layout under --dest-dir:
 
-This module is the user interface (argparse, prompts, color, progress).
-All routing logic lives in classifier.routing.
-
-Usage examples:
-
-    sort-files --schedule input/sahil_schedule.xls --source-dir /tmp/docs
-
-    sort-files --schedule input/sahil_schedule.xls --source-dir /tmp/docs \\
-        --mode copy --dest-dir /tmp/sorted --yes
-
-    sort-files --schedule input/sahil_schedule.xls --source-dir /tmp/docs \\
-        --mode in-place --yes
-
-Run with --help for full options.
+    Drawings/<discipline>/...
+    Documents/<discipline>/...
+    Undefined/<discipline>/...
+    Unmatched/...
+    related-documents.xlsx
 """
 from __future__ import annotations
 
@@ -37,9 +28,11 @@ from classifier.cli.reporting import (
     _print_plan_summary,
     _print_progress,
 )
+from classifier.io.related_xlsx import RelatedRow, write_related_xlsx
 from classifier.routing.analysis import find_collisions
-from classifier.routing.execute import clean_empty_dirs, execute_plan
-from classifier.routing.matching import match_files
+from classifier.routing.dedup import group_and_pick, parse_stem
+from classifier.routing.execute import execute_plan
+from classifier.routing.matching import _iter_source_files, match_files
 from classifier.routing.plan import build_plan
 from classifier.routing.resolution import resolve_duplicates
 from classifier.routing.schedule_refs import load_schedule_refs
@@ -48,22 +41,18 @@ from classifier.routing.schedule_refs import load_schedule_refs
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="sort-files",
-        description="Sort schedule-referenced files into Drawings / Documents / "
-                    "Undefined / Unmatched folders. Files are matched to "
-                    "schedule rows by their cust_ref number embedded in the filename.",
+        description="Copy schedule-referenced files into Drawings / Documents / "
+                    "Undefined / Unmatched folders. One file per logical "
+                    "document (latest revision; pdf > doc > xls).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 examples:
-  Interactive:
+  Interactive (prompts for dest-dir if omitted):
     sort-files --schedule schedule.xls --source-dir ./docs
 
-  Copy mode, non-interactive:
+  Non-interactive:
     sort-files --schedule schedule.xls --source-dir ./docs \\
-        --mode copy --dest-dir ./sorted --yes
-
-  In-place sort, non-interactive:
-    sort-files --schedule schedule.xls --source-dir ./docs \\
-        --mode in-place --yes
+        --dest-dir ./sorted --yes
 """,
     )
     p.add_argument(
@@ -73,31 +62,19 @@ examples:
     )
     p.add_argument(
         "--source-dir", required=True, type=Path,
-        help="Directory containing the files to sort. Top level only by "
-             "default (subdirectories are skipped). Pass --recursive to "
-             "walk subdirectories.",
+        help="Directory containing the files to sort. Walked recursively. "
+             "Files already inside class folders (Drawings/Documents/"
+             "Undefined/Unmatched) are skipped so re-runs are safe.",
     )
     p.add_argument(
-        "--recursive", "-r", action="store_true",
-        help="Recursively scan subdirectories of --source-dir. Files "
-             "already inside class folders (Drawings/Documents/Undefined/"
-             "Unmatched) are skipped so re-runs are safe. After in-place "
-             "sort, the original subdirs may be left empty - pair with "
-             "--clean-empty-dirs to remove them.",
-    )
-    p.add_argument(
-        "--clean-empty-dirs", action="store_true",
-        help="After execution, remove any subdirectories under --source-dir "
-             "(or --dest-dir for copy) that are now empty. Useful with "
-             "--recursive + --mode in-place to clean up emptied "
-             "transmittal folders.",
+        "--dest-dir", type=Path, default=None,
+        help="Destination directory. If omitted, you will be prompted.",
     )
     p.add_argument(
         "--include-title", action="store_true",
         help="Append the schedule's Title to the destination filename: "
-             "'<original_stem> - <title><ext>'. The title is sanitized for "
-             "filesystem safety and truncated to --title-max-len chars. "
-             "Files with no schedule match (Unmatched) keep their original name.",
+             "'<original_stem> - <title><ext>'. Sanitized and truncated to "
+             "--title-max-len chars. Unmatched files keep their original name.",
     )
     p.add_argument(
         "--title-max-len", type=int, default=100,
@@ -107,23 +84,8 @@ examples:
     p.add_argument(
         "--on-duplicate", choices=("error", "skip", "rename"), default="error",
         help="What to do when two source files would land at the same "
-             "destination (common with --recursive when the same document "
-             "was re-sent across transmittals). "
-             "'error' (default): abort with a list of collisions. "
-             "'skip': keep the first source by path order, drop the rest. "
-             "'rename': keep all by appending a numeric suffix "
-             "(foo.pdf, foo-2.pdf, foo-3.pdf, ...). "
-             "Also handles cases where the destination already exists on disk.",
-    )
-    p.add_argument(
-        "--mode", choices=("in-place", "copy"), default=None,
-        help="'in-place' moves files into class subfolders of --source-dir. "
-             "'copy' copies into --dest-dir. If omitted, you will be prompted.",
-    )
-    p.add_argument(
-        "--dest-dir", type=Path, default=None,
-        help="Destination directory for --mode copy. If omitted, you will "
-             "be prompted (only when --mode copy).",
+             "destination. 'error' (default): abort. 'skip': keep first by "
+             "path order. 'rename': append numeric suffix.",
     )
     p.add_argument(
         "--yes", "-y", action="store_true",
@@ -141,7 +103,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     c = _Color(_color_enabled(args.no_color))
 
-    # ---- Validate paths --------------------------------------------------
     if not args.schedule.exists():
         print(c.red(f"error: schedule not found: {args.schedule}"), file=sys.stderr)
         return 2
@@ -149,7 +110,6 @@ def main(argv: list[str] | None = None) -> int:
         print(c.red(f"error: source-dir is not a directory: {args.source_dir}"), file=sys.stderr)
         return 2
 
-    # ---- Load schedule ---------------------------------------------------
     print(c.bold(f"Reading schedule: {args.schedule}"))
     try:
         refs = load_schedule_refs(args.schedule)
@@ -158,37 +118,27 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(f"  {len(refs)} rows with valid cust_refs")
 
-    # ---- Match files -----------------------------------------------------
-    scan_label = "recursive" if args.recursive else "top-level only"
-    print(c.bold(f"Scanning {args.source_dir} ({scan_label})"))
-    result = match_files(refs, args.source_dir, recursive=args.recursive)
+    print(c.bold(f"Scanning {args.source_dir} (recursive)"))
+    all_files = _iter_source_files(args.source_dir)
+    groups = group_and_pick(all_files)
+    winners = [r.primary for r in groups.values()]
+    related_by_winner = {r.primary: list(r.related) for r in groups.values()}
+    accounted = set(winners) | {p for r in groups.values() for p in r.related}
+    skipped_no_preferred = sum(1 for f in all_files if f not in accounted)
+    print(f"  {len(all_files)} file(s) found, {len(winners)} winner(s) after dedup")
+    if skipped_no_preferred:
+        print(c.yellow(f"  {skipped_no_preferred} file(s) skipped (no preferred format in group)"))
+
+    result = match_files(refs, args.source_dir, files=winners)
     _print_match_summary(result, c)
 
     if not result.matched and not result.unmatched:
         print(c.yellow("\nno files to sort - exiting."))
         return 0
 
-    # ---- Choose mode -----------------------------------------------------
-    mode = args.mode
-    if mode is None:
-        choice = _prompt(
-            "\nMode: [i]n-place sort  [c]opy to other location  [q]uit",
-            valid=("in-place", "copy", "quit"),
-        )
-        if choice == "quit":
-            return 0
-        mode = choice
+    dest = args.dest_dir or _prompt_path("\nDestination directory")
+    dest = Path(dest).expanduser().resolve()
 
-    # ---- Determine destination ------------------------------------------
-    if mode == "in-place":
-        dest = args.source_dir
-        if args.dest_dir is not None:
-            print(c.yellow("note: --dest-dir is ignored in in-place mode"))
-    else:  # copy
-        dest = args.dest_dir or _prompt_path("\nDestination directory")
-        dest = Path(dest).expanduser().resolve()
-
-    # ---- Build plan + resolve duplicates + check collisions -------------
     plan = build_plan(
         result,
         dest,
@@ -217,32 +167,23 @@ def main(argv: list[str] | None = None) -> int:
         print(c.red("\naborting."))
         return 1
 
-    # ---- Confirm ---------------------------------------------------------
-    op_word = "move" if mode == "in-place" else "copy"
     print()
-    print(c.bold(f"Ready to {op_word} {len(plan.operations)} file(s) into {dest}"))
+    print(c.bold(f"Ready to copy {len(plan.operations)} file(s) into {dest}"))
     if not args.yes:
         if _prompt(f"Proceed?", valid=("yes", "no"), default="no") != "yes":
             print(c.yellow("cancelled."))
             return 0
 
-    # ---- Execute ---------------------------------------------------------
     print()
-    gerund = "Moving" if op_word == "move" else "Copying"
-    print(c.bold(f"{gerund} files..."))
+    print(c.bold("Copying files..."))
     counts = execute_plan(
         plan,
-        mode="move" if mode == "in-place" else "copy",
         on_progress=lambda d, t, s: _print_progress(d, t, s, c),
     )
 
-    # ---- Optional cleanup of empty dirs ---------------------------------
-    if args.clean_empty_dirs:
-        cleanup_root = args.source_dir if mode == "in-place" else dest
-        removed = clean_empty_dirs(cleanup_root)
-        print(f"  removed {removed} empty subdirectories under {cleanup_root}")
+    rows = _build_related_rows(plan, result, related_by_winner, args.source_dir)
+    xlsx_path = write_related_xlsx(dest, rows)
 
-    # ---- Done ------------------------------------------------------------
     print()
     print(c.green(c.bold("Done.")))
     print(f"  destination: {dest}")
@@ -250,7 +191,35 @@ def main(argv: list[str] | None = None) -> int:
         n = counts.get(name, 0)
         if n:
             print(f"  {name:<12s} {n}")
+    print(f"  related sidecar: {xlsx_path}")
     return 0
+
+
+def _build_related_rows(plan, result, related_by_winner, source_root):
+    matched_by_path = {m.path: m for m in result.matched}
+    rows: list[RelatedRow] = []
+    for src, dst in plan.operations:
+        m = matched_by_path.get(src)
+        _, revision = parse_stem(src.stem)
+        ext = src.suffix.lstrip(".").lower()
+        try:
+            rel_dir = src.parent.relative_to(source_root).as_posix() or "."
+        except ValueError:
+            rel_dir = str(src.parent)
+        rows.append(
+            RelatedRow(
+                cust_ref=m.cust_ref if m else "",
+                title=m.title if m else "",
+                class_label=m.class_label if m else "",
+                discipline=m.discipline if m else "",
+                revision=revision,
+                chosen_file=dst.name,
+                chosen_format=ext,
+                related_files=[p.name for p in related_by_winner.get(src, [])],
+                source_group_dir=rel_dir,
+            )
+        )
+    return rows
 
 
 if __name__ == "__main__":
