@@ -8,9 +8,6 @@ dependencies = [
     "xlrd>=2.0",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=7"]
-
 [project.scripts]
 classify       = "classifier.cli.classify:main"
 sort-files     = "classifier.cli.sort:main"
