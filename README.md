@@ -103,63 +103,73 @@ existing 10-bucket sub-routing remains available.
 **Filtering tip:** for clean classifications use `class != "Undefined"`;
 for items needing human review use `class == "Undefined"`.
 
-## sort-files — interactive file routing
+## sort-files — file routing
 
 Given a schedule and a directory whose filenames embed the schedule's
-`cust_ref` numbers, this CLI splits the files into class folders.
+`cust_ref` numbers, this CLI copies one file per logical document into
+class folders, plus an Excel sidecar listing the siblings that were not
+copied.
 
 ```bash
-# Interactive (prompts for mode + destination + confirmation)
+# Interactive (prompts for dest-dir)
 sort-files --schedule schedule.xls --source-dir ./docs
 
-# Non-interactive copy
+# Non-interactive
 sort-files --schedule schedule.xls --source-dir ./docs \
-           --mode copy --dest-dir ./sorted --yes
-
-# Non-interactive in-place sort
-sort-files --schedule schedule.xls --source-dir ./docs \
-           --mode in-place --yes
+           --dest-dir ./sorted --yes
 ```
 
 | Flag | Purpose |
 |---|---|
 | `--schedule PATH` | Schedule `.xls` (must have Sheet1 with `Cust Ref #` and `Title`) |
-| `--source-dir PATH` | Directory containing the files (top level only by default) |
-| `--recursive`, `-r` | Walk subdirectories. Files already inside class folders (`Drawings/`, `Documents/`, etc.) are skipped so re-runs are safe. |
-| `--clean-empty-dirs` | After execution, remove any subdirectories that are now empty. Useful with `--recursive --mode in-place` to clean up emptied transmittal folders. |
+| `--source-dir PATH` | Directory containing the files. Walked recursively. Files already inside class folders (`Drawings/`, `Documents/`, etc.) are skipped so re-runs are safe. |
+| `--dest-dir PATH` | Destination directory. Prompted if omitted. |
 | `--on-duplicate {error\|skip\|rename}` | What to do when two source files would land at the same destination. `error` (default): abort. `skip`: keep first by path order. `rename`: append numeric suffix (`foo.pdf`, `foo-2.pdf`, ...). |
-| `--include-title` | Append the schedule's Title to the destination filename: `<original_stem> - <safe_title><ext>`. The title is sanitized for filesystem safety and truncated to `--title-max-len`. Files with no schedule match (Unmatched) keep their original name. |
+| `--include-title` | Append the schedule's Title to the destination filename: `<original_stem> - <safe_title><ext>`. The title is sanitized and truncated to `--title-max-len`. Unmatched files keep their original name. |
 | `--title-max-len N` | Max characters of the title to include (default 100). |
-| `--mode {in-place\|copy}` | Skip the mode prompt |
-| `--dest-dir PATH` | Destination for copy mode (skips the dest prompt) |
 | `--yes`, `-y` | Skip the final confirmation |
-| `--no-color` | Disable ANSI color (auto-disabled when not a TTY or when `NO_COLOR` is set) |
+| `--no-color` | Disable ANSI color (auto-disabled when not a TTY or `NO_COLOR` is set) |
+
+**Dedup behaviour:**
+- Files are grouped by stem with the revision suffix stripped (anchored
+  on the `cust_ref` so a bare 4-digit cust_ref tail is not misread as a
+  revision).
+- Within a group, the latest revision wins. Digit revisions (issued)
+  supersede letter revisions (draft); within a bucket, lexically larger
+  wins.
+- Within the latest revision, format priority: `pdf > doc/docx > xls/xlsx`.
+- Other extensions (`.dwg`, `.rar`, `.lnk`, ...) are never copied — they
+  are recorded in the sidecar as related files.
+- Groups with no PDF/DOC/XLS candidate produce no output (a console
+  counter reports the count).
 
 **Resulting folder layout:**
 
-The sort always produces a **two-level `class / discipline / file`** tree.
-Discipline comes from the schedule's `Discip` column and is sanitized for
-filesystem safety (`ENGG QA/QC` → `ENGG_QA_QC`, missing → `_UNKNOWN`):
+The output is a **two-level `class / discipline / file`** tree, plus
+the sidecar. Discipline comes from the schedule's `Discip` column,
+sanitized for filesystem safety (`ENGG QA/QC` → `ENGG_QA_QC`, missing →
+`_UNKNOWN`):
 
 ```
 <dest>/
 ├── Drawings/
-│   ├── CIVIL/        matched, class==Drawings, discipline==CIVIL
+│   ├── CIVIL/
 │   ├── PIPNG/
-│   ├── INST/
 │   └── ...
 ├── Documents/
-│   └── ...
-├── Undefined/        matched class==Undefined, still grouped by discipline
-│   └── ...
-└── Unmatched/        no schedule match — kept flat (no discipline available)
-    └── *.pdf
+├── Undefined/
+├── Unmatched/                  # no schedule match — kept flat
+└── related-documents.xlsx      # one row per logical document
 ```
+
+**`related-documents.xlsx` columns:**
+`cust_ref`, `title`, `class`, `discipline`, `revision`, `chosen_file`,
+`chosen_format`, `related_files` (semicolon-joined basenames),
+`related_count`, `source_group_dir`.
 
 Safety:
 - **Collision detection** — aborts before any I/O if a destination path
   already exists or two source files would map to the same destination.
-- **In-place re-run safety** — files already at their target are no-ops.
 - **Honest reporting** — separately counts files with no `cust_ref` in
   the name, files whose ref isn't in the schedule, and schedule rows
   with no matching file on disk.
