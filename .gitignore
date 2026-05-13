@@ -16,3 +16,4 @@ sample_test3.py
 
 # Local sandbox / scratch
 Feed.txt
+.baseline-hashes.json
