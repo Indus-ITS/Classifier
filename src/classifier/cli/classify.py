@@ -28,7 +28,7 @@ from classifier.config.buckets import BUCKET_TO_CLASS
 from classifier.core.scoring import fold_to_class, pick_bucket, score_buckets
 from classifier.io.normalize import is_empty, normalize_lookup_key
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
-from classifier.io.type_lookup import build_lookup
+from classifier.io.type_lookup import TypeLookup, build_lookup
 
 INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
@@ -56,19 +56,24 @@ def _normalize_doc_type(value: str, title: str, description: str) -> tuple[str, 
 
 
 def _fill_type(row_type: str, doc_no: str, cust_ref: str,
-               lookup) -> tuple[str, str]:
+               lookup: TypeLookup) -> tuple[str, str]:
     """Return ``(value, reason)``.
 
-    reason is one of: ``preserved``, ``via_doc_no``, ``via_cust_ref``, ``empty``.
+    reason is one of: ``preserved``, ``via_doc_no``, ``via_cross_ref``,
+    ``via_cust_ref``, ``empty``.
 
     Lookup strategy:
       1. ``input.document_no`` against ``lookup.by_doc_no`` (direct hit).
+         Reason: ``via_doc_no``.
       2. ``input.customer_ref`` against ``lookup.by_doc_no`` (the input's
-         ``customer_ref`` typically carries the original document number that
-         appears as ``document_no`` in the canonical index — that's the main
-         cross-reference path).
-      3. ``input.customer_ref`` against ``lookup.by_cust_ref`` (only useful if
-         a future canonical CSV ever populates its ``customer_ref`` column).
+         ``customer_ref`` typically carries the original document number
+         that appears as ``document_no`` in the canonical index — main
+         cross-reference path on this dataset).
+         Reason: ``via_cross_ref``.
+      3. ``input.customer_ref`` against ``lookup.by_cust_ref`` (only fires
+         when a canonical CSV ever populates its own ``customer_ref``
+         column — currently always empty on this dataset).
+         Reason: ``via_cust_ref``.
       4. Miss → empty.
     """
     if not is_empty(row_type):
@@ -79,7 +84,7 @@ def _fill_type(row_type: str, doc_no: str, cust_ref: str,
     k_cust = normalize_lookup_key(cust_ref)
     if k_cust:
         if k_cust in lookup.by_doc_no:
-            return lookup.by_doc_no[k_cust], "via_cust_ref"
+            return lookup.by_doc_no[k_cust], "via_cross_ref"
         if k_cust in lookup.by_cust_ref:
             return lookup.by_cust_ref[k_cust], "via_cust_ref"
     return "", "empty"
@@ -128,7 +133,9 @@ def main() -> None:
             writer.writerow([out[c] for c in TARGET_COLUMNS])
 
     total = sum(doc_type_after.values())
-    fills = type_reason["via_doc_no"] + type_reason["via_cust_ref"]
+    fills = (type_reason["via_doc_no"]
+             + type_reason["via_cross_ref"]
+             + type_reason["via_cust_ref"])
 
     print(f"\nWrote {OUTPUT_PATH}  ({total} rows)")
     print()
@@ -145,14 +152,14 @@ def main() -> None:
     print(f"  reasons: {dict(doc_type_reason)}")
     print()
     print("type fill outcomes:")
-    for k in ("preserved", "via_doc_no", "via_cust_ref", "empty"):
+    for k in ("preserved", "via_doc_no", "via_cross_ref", "via_cust_ref", "empty"):
         print(f"  {k:14s} {type_reason.get(k, 0):>6}")
 
     if fills > 0 and type_reason["via_cust_ref"] / fills > 0.10:
         ratio = type_reason["via_cust_ref"] / fills
         print()
-        print(f"!! WARNING: cust_ref fallback is {ratio:.1%} of fills (>10%).")
-        print("   Customer refs are reused/human-entered - verify upstream data.")
+        print(f"!! WARNING: true cust_ref fallback is {ratio:.1%} of fills (>10%).")
+        print("   Customer refs are reused/human-entered — verify upstream data.")
 
     if lookup.conflicts_doc_no:
         print()
