@@ -1,21 +1,20 @@
-"""Main entry point: classify each row of the schedules under
-``input/To be classified/`` and write a single CSV to ``output/classified.csv``.
+"""Fill ``doc_type`` and ``type`` in the to-be-classified CSV.
 
-Run from the project root::
+Reads ``input/To be classified/document.csv`` and writes
+``output/classified.csv`` with identical schema, identical column order,
+identical row count. Only ``doc_type`` and ``type`` may change.
+
+* ``doc_type`` is always normalized to the lowercase enum
+  ``{drawing, document}``. Unknown/empty values fall back to the
+  bucket scorer; ``Undefined`` folds to ``document`` (intentional
+  business bias - see the spec).
+* ``type`` is filled only when the input value is empty/NULL, by
+  looking up the row's ``document_no`` (then ``customer_ref``) in the
+  maps built from ``input/classified_csv/``. On miss it stays empty.
+
+Run from project root::
 
     classify
-
-Inputs:
-  * ``input/To be classified/*.xls`` - schedule sheets with columns
-    PCS Doc No., Cust Ref #, Title, Discip, Rev.
-  * classifier.config - keyword bank, bucket definitions, BUCKET_TO_CLASS fold
-  * classifier.core.scoring - bucket scoring functions
-
-Output:
-  * ``output/classified.csv`` - one row per schedule entry, columns:
-      title, doc_number, cust_ref, revision, discipline, class, subtype,
-      source_sheet, discipline_inferred,
-      score, top_weight, confidence, runner_up, runner_up_score
 """
 from __future__ import annotations
 
@@ -26,126 +25,129 @@ from pathlib import Path
 import pandas as pd
 
 from classifier.config.buckets import BUCKET_TO_CLASS
-from classifier.core.discipline import discipline_from_keywords
 from classifier.core.scoring import fold_to_class, pick_bucket, score_buckets
+from classifier.io.normalize import is_empty, normalize_lookup_key
+from classifier.io.schema import TARGET_COLUMNS, validate_schema
+from classifier.io.type_lookup import build_lookup
 
-INPUT_DIR = Path("input/To be classified")
+INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
+CLASSIFIED_CSV_DIR = Path("input/classified_csv")
 
-# Column order: identity fields first, then primary classification (class),
-# then secondary (subtype), then explainability fields. The first 7 are
-# the user-facing columns; the rest are diagnostics for tuning.
-COLUMNS = (
-    "title",
-    "doc_number",
-    "cust_ref",
-    "revision",
-    "discipline",
-    "class",
-    "subtype",
-    "source_sheet",
-    "discipline_inferred",
-    "score",
-    "top_weight",
-    "confidence",
-    "runner_up",
-    "runner_up_score",
-)
+DRAWING_ALIASES = {"drawing", "drawings", "dwg"}
+DOCUMENT_ALIASES = {"document", "documents", "doc", "docs"}
 
 
-def load_rows(xls_path: Path) -> list[dict]:
-    df = pd.read_excel(xls_path, sheet_name="Sheet1")
-    needed = {"PCS Doc No.", "Cust Ref #", "Title", "Discip", "Rev."}
-    missing = needed - set(df.columns)
-    if missing:
-        raise SystemExit(f"{xls_path.name}: missing columns {missing}")
+def _normalize_doc_type(value: str, title: str, description: str) -> tuple[str, str]:
+    """Return ``(normalized, reason)``.
 
-    df = df.dropna(subset=["Title"]).copy()
-    rows = []
-    for _, r in df.iterrows():
-        title = str(r["Title"]).strip()
-        if not title or title.lower() == "nan":
-            continue
-        scores = score_buckets(title, "")
-        pick = pick_bucket(scores)
-        subtype = pick["bucket"]
-        rows.append({
-            "title": title,
-            "doc_number": "" if pd.isna(r["PCS Doc No."]) else str(r["PCS Doc No."]).strip(),
-            "cust_ref": "" if pd.isna(r["Cust Ref #"]) else str(r["Cust Ref #"]).strip(),
-            "revision": "" if pd.isna(r["Rev."]) else str(r["Rev."]).strip(),
-            "discipline": "" if pd.isna(r["Discip"]) else str(r["Discip"]).strip(),
-            "class": fold_to_class(pick, BUCKET_TO_CLASS),
-            "subtype": subtype,
-            "source_sheet": xls_path.name,
-            "discipline_inferred": discipline_from_keywords(title),
-            "score": pick["score_sum"],
-            "top_weight": pick["score_top"],
-            "confidence": pick["confidence"],
-            "runner_up": pick["runner_up_bucket"],
-            "runner_up_score": pick["runner_up_score"],
-        })
-    return rows
+    reason is one of: ``existing``, ``scored``. Used for the summary.
+    """
+    if not is_empty(value):
+        v = str(value).strip().lower()
+        if v in DRAWING_ALIASES:
+            return "drawing", "existing"
+        if v in DOCUMENT_ALIASES:
+            return "document", "existing"
+    scores = score_buckets(title, description)
+    pick = pick_bucket(scores)
+    folded = fold_to_class(pick, BUCKET_TO_CLASS)
+    return ("drawing" if folded == "Drawings" else "document"), "scored"
 
 
-def write_csv(rows: list[dict], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(COLUMNS)
-        for r in rows:
-            w.writerow([r.get(c, "") for c in COLUMNS])
+def _fill_type(row_type: str, doc_no: str, cust_ref: str,
+               lookup) -> tuple[str, str]:
+    """Return ``(value, reason)``.
+
+    reason is one of: ``preserved``, ``via_doc_no``, ``via_cust_ref``, ``empty``.
+    """
+    if not is_empty(row_type):
+        return str(row_type).strip(), "preserved"
+    k_doc = normalize_lookup_key(doc_no)
+    if k_doc and k_doc in lookup.by_doc_no:
+        return lookup.by_doc_no[k_doc], "via_doc_no"
+    k_cust = normalize_lookup_key(cust_ref)
+    if k_cust and k_cust in lookup.by_cust_ref:
+        return lookup.by_cust_ref[k_cust], "via_cust_ref"
+    return "", "empty"
 
 
 def main() -> None:
-    if not INPUT_DIR.exists():
-        raise SystemExit(f"input dir not found: {INPUT_DIR}")
+    if not INPUT_PATH.exists():
+        raise SystemExit(f"input not found: {INPUT_PATH}")
 
-    all_rows: list[dict] = []
-    per_source: dict[str, int] = {}
-    for xls in sorted(INPUT_DIR.glob("*.xls*")):
-        rows = load_rows(xls)
-        per_source[xls.name] = len(rows)
-        all_rows.extend(rows)
+    df = pd.read_csv(INPUT_PATH, dtype=str, keep_default_na=False, na_values=[])
+    validate_schema(df.columns)
 
-    write_csv(all_rows, OUTPUT_PATH)
+    lookup = build_lookup(CLASSIFIED_CSV_DIR)
 
-    print(f"\nWrote {OUTPUT_PATH}  ({len(all_rows)} rows)")
+    doc_type_before: Counter[str] = Counter()
+    doc_type_after: Counter[str] = Counter()
+    doc_type_reason: Counter[str] = Counter()
+    type_reason: Counter[str] = Counter()
+
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
+        writer.writerow(TARGET_COLUMNS)
+        for _, row in df.iterrows():
+            # Preserve original byte values for non-target columns. Only
+            # doc_type and type are mutated; everything else is passed
+            # through verbatim (including sentinels like "NULL").
+            out = {c: str(row[c]) for c in TARGET_COLUMNS}
+
+            before = out["doc_type"].strip().lower() if not is_empty(out["doc_type"]) else ""
+            doc_type_before[before or "(empty)"] += 1
+
+            new_doc_type, dt_reason = _normalize_doc_type(
+                out["doc_type"], out["title"], out["description"],
+            )
+            out["doc_type"] = new_doc_type
+            doc_type_after[new_doc_type] += 1
+            doc_type_reason[dt_reason] += 1
+
+            new_type, t_reason = _fill_type(
+                out["type"], out["document_no"], out["customer_ref"], lookup,
+            )
+            out["type"] = new_type
+            type_reason[t_reason] += 1
+
+            writer.writerow([out[c] for c in TARGET_COLUMNS])
+
+    total = sum(doc_type_after.values())
+    fills = type_reason["via_doc_no"] + type_reason["via_cust_ref"]
+
+    print(f"\nWrote {OUTPUT_PATH}  ({total} rows)")
     print()
-    print("By source sheet:")
-    for name, n in per_source.items():
-        print(f"  {name:30s} {n:>5}")
+    print(f"Lookup: scanned {lookup.n_csvs} csvs; "
+          f"doc_no map={len(lookup.by_doc_no)}, "
+          f"cust_ref map={len(lookup.by_cust_ref)}, "
+          f"conflicts doc_no={len(lookup.conflicts_doc_no)} "
+          f"cust_ref={len(lookup.conflicts_cust_ref)}")
     print()
-    print("By class:")
-    for cls, n in Counter(r["class"] for r in all_rows).most_common():
-        print(f"  {cls:18s} {n:>5}  ({100*n/len(all_rows):5.1f}%)")
+    print("doc_type (before -> after):")
+    for k in sorted(set(doc_type_before) | set(doc_type_after)):
+        print(f"  {k:14s} before={doc_type_before.get(k, 0):>6}  "
+              f"after={doc_type_after.get(k, 0):>6}")
+    print(f"  reasons: {dict(doc_type_reason)}")
     print()
-    print("By subtype:")
-    for b, n in Counter(r["subtype"] for r in all_rows).most_common():
-        print(f"  {b:18s} {n:>5}  ({100*n/len(all_rows):5.1f}%)")
-    print()
-    print("By discipline:")
-    for d, n in Counter((r["discipline"] or "(blank)") for r in all_rows).most_common():
-        print(f"  {d:18s} {n:>5}  ({100*n/len(all_rows):5.1f}%)")
-    print()
-    print("By class x discipline:")
-    grid: dict[str, dict[str, int]] = {}
-    for r in all_rows:
-        cls = r["class"]
-        disc = r["discipline"] or "(blank)"
-        grid.setdefault(cls, {})
-        grid[cls][disc] = grid[cls].get(disc, 0) + 1
-    for cls in ("Drawings", "Documents", "Undefined"):
-        if cls not in grid:
-            continue
-        total_cls = sum(grid[cls].values())
-        print(f"  {cls} ({total_cls}):")
-        for disc in sorted(grid[cls].keys()):
-            print(f"    {disc:18s} {grid[cls][disc]:>5}")
-    print()
-    print("By confidence:")
-    for conf, n in Counter(r["confidence"] for r in all_rows).most_common():
-        print(f"  {conf:8s} {n:>5}  ({100*n/len(all_rows):5.1f}%)")
+    print("type fill outcomes:")
+    for k in ("preserved", "via_doc_no", "via_cust_ref", "empty"):
+        print(f"  {k:14s} {type_reason.get(k, 0):>6}")
+
+    if fills > 0 and type_reason["via_cust_ref"] / fills > 0.10:
+        ratio = type_reason["via_cust_ref"] / fills
+        print()
+        print(f"!! WARNING: cust_ref fallback is {ratio:.1%} of fills (>10%).")
+        print("   Customer refs are reused/human-entered - verify upstream data.")
+
+    if lookup.conflicts_doc_no:
+        print()
+        print(f"!! conflict keys in doc_no map ({len(lookup.conflicts_doc_no)}):")
+        for k, ts in list(lookup.conflicts_doc_no.items())[:10]:
+            print(f"   {k} -> {sorted(ts)}")
+        if len(lookup.conflicts_doc_no) > 10:
+            print(f"   ... +{len(lookup.conflicts_doc_no) - 10} more")
 
 
 if __name__ == "__main__":
