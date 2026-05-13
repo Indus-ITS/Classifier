@@ -112,7 +112,8 @@ def _doc_type_for(section_label: str, type_code: str) -> str:
     bucket = TYPE_TO_BUCKET.get(code)
     if bucket is None:
         return ""
-    return BUCKET_TO_CLASS[bucket].lower()
+    folded = BUCKET_TO_CLASS[bucket]
+    return "drawing" if folded == "Drawings" else "document"
 
 
 def xlsx_to_rows(workbook_path: Path) -> Iterable[tuple[str, list[dict[str, str]]]]:
