@@ -16,6 +16,7 @@ dump-buckets   = "classifier.tools.dump_buckets:main"
 dump-undefined = "classifier.tools.dump_undefined:main"
 evaluate       = "classifier.tools.evaluate:main"
 harvest        = "classifier.tools.harvest:main"
+build-type-enum    = "classifier.tools.build_type_enum:main"
 
 [build-system]
 requires = ["setuptools>=61"]
