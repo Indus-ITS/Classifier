@@ -2,9 +2,6 @@
 
 Source of truth: ``input/To be classified/document.csv`` header row.
 All pipeline stages must read and write rows in this exact order.
-
-Not to be confused with ``classifier.config.schema``, which holds the
-legacy 33-column audit schema.
 """
 from __future__ import annotations
 
