@@ -29,6 +29,65 @@ Also clean up repo cruft picked up along the way.
 - No keyword-based prediction of the 3-letter `type` code (left for a
   later classifier-improvement pass).
 - No schema changes to the 28-column CSV.
+- No automated tests (per standing user direction — see commit `e872846`).
+  Verification is by hand: row-count parity, per-rule counts in the
+  summary printout, spot-check of sample rows.
+
+## Cross-cutting invariants
+
+These apply to every sub-project and every helper.
+
+### String-only I/O
+
+All CSV and Excel reads use `dtype=str, keep_default_na=False, na_values=[]`.
+The literal four-character string `NULL` is treated as empty by the rules
+in C; it is never converted to a Python `None` during I/O. Empty cells
+are the empty string `""`, never `NaN`. This preserves leading zeros,
+prevents scientific-notation mangling, and keeps JSON blobs intact.
+
+### Schema validation
+
+Shared helper `validate_schema(columns: Sequence[str]) -> None` lives at
+`src/classifier/io/schema.py`. It asserts:
+
+- exact length 28
+- exact order matching `TARGET_COLUMNS`
+- no extras, no duplicates
+
+Invoked at the start of every CSV write (A, C output) and every CSV read
+of a canonical CSV (B, C input). Hard-fail on mismatch.
+
+### Lookup-key normalization
+
+Shared helper `normalize_lookup_key(value: str) -> str` lives at
+`src/classifier/io/normalize.py`:
+
+- if input is empty or the literal `NULL` → return `""`
+- Unicode-normalize NFKC (folds fullwidth, ligatures)
+- strip leading/trailing whitespace
+- collapse internal whitespace runs to a single space
+- replace en/em dashes and minus-sign with ASCII hyphen
+- uppercase
+
+All lookup-map builders and consumers must use this helper. No ad-hoc
+`.strip().upper()` calls.
+
+### Header-token normalization
+
+Shared helper `normalize_header_token(value: str) -> str` at
+`src/classifier/io/normalize.py`:
+
+- strip, lowercase, NFKC, collapse whitespace, drop trailing punctuation
+- examples: `"Document No."`, `"Document No"`, `"Document No :"` all map to `"document no"`
+
+Header detection in A compares normalized tokens, not raw strings.
+
+### Deterministic file ordering
+
+Any code that walks a directory uses
+`sorted(path.glob(pattern), key=lambda p: str(p).lower())`. No reliance
+on filesystem traversal order. This makes A and B's outputs identical
+across OSes and CI.
 
 ---
 
@@ -99,30 +158,44 @@ Unmapped target columns stay empty.
 
 ### Header auto-detection
 
-- Read each sheet headerless. Scan first 20 rows.
-- First row containing both `Document No.` and `Type` (alias-tolerant) is
-  the header row. Subsequent rows are data.
+- Read each sheet headerless. Scan first **50** rows.
+- For each row, build the set `{normalize_header_token(cell) for cell in row}`.
+- First row whose normalized tokens contain both `"document no"` and
+  `"type"` (via the alias map) is the header row. Subsequent rows are data.
 - If no candidate header → log + skip the sheet (do not error).
 
 ### Section header detection
 
-- A row where column A is populated and `Document No.` / `Type` columns are
-  blank is a section label.
-- Carry last-seen label down to subsequent data rows until replaced.
-- If the label cleanly matches the `category` taxonomy (e.g. "Process",
-  "Project Management"), also write it to the `category` column.
+A row is treated as a section label only when **all** of these hold:
+
+- Column A is populated.
+- All header-defined data columns (`Document No.`, `Type`, `Title`, `Rev.`)
+  are blank in that row.
+- Column A's value is short (≤ 40 chars after strip).
+- Column A's value contains only letters, spaces, slashes, ampersands, and
+  hyphens (no digits, no colons). Rejects "Prepared by John 2014" and
+  "Subtotal: 12".
+
+Carry last-seen label down to subsequent data rows until replaced. If the
+label exactly matches a known category (case-insensitive set of
+`{"Project Management", "Process", "Mechanical", "Electrical", "Instrumentation",
+"Piping", "Civil", "Structural", "Safety", "Telecom", "HVAC"}`), also write
+it to the `category` column; otherwise leave `category` empty and log the
+unmatched label.
 
 ### File walk
 
-- Glob `input/classified/**/*.xls*`.
+- Glob `input/classified/**/*.xls*`, sorted lexicographically.
 - Skip any path containing a `void/` segment.
-- Per workbook, iterate every sheet.
+- Per workbook, iterate every sheet in workbook order.
 
 ### Output layout
 
 - Mirror tree under `input/classified_csv/`.
-- One CSV per sheet. Filename: `<workbook-stem>__<sheet>.csv`
-  (single-sheet workbooks still get the suffix for consistency).
+- One CSV per sheet. Filename: `<workbook-stem>__<sheet-slug>.csv`.
+- Sheet slug: lowercase, NFKC, replace any character not in `[a-z0-9_-]`
+  with `_`, collapse consecutive `_`, trim leading/trailing `_`.
+- On slug collision within a workbook, append `_2`, `_3`, … in sheet order.
 - CSV written with `csv.QUOTE_MINIMAL`, UTF-8, LF line endings.
 
 ### Code shape
@@ -157,14 +230,17 @@ Unmapped target columns stay empty.
 
 - `src/classifier/config/type_enum.py` containing:
   - `KNOWN_TYPES: frozenset[str]` — the 31 mapped codes (synced with
-    `TYPE_TO_BUCKET`).
+    `TYPE_TO_BUCKET`). Listed sorted in the generated source.
   - `OBSERVED_OUTLIERS: dict[str, int]` — codes seen in classified CSVs that
-    are not in `KNOWN_TYPES`, mapped to occurrence count. Intended as a
-    todo list for future classifier-improvement work (e.g. ITB → still
-    unmapped pending bucket decision).
+    are not in `KNOWN_TYPES`, mapped to occurrence count. Keys emitted in
+    sorted order for stable diffs. Intended as a todo list for future
+    classifier-improvement work (e.g. ITB → still unmapped pending bucket
+    decision).
   - `ALL_OBSERVED_TYPES: frozenset[str]` — `KNOWN_TYPES | OBSERVED_OUTLIERS.keys()`.
 - Module is generated by a one-shot tool, not hand-edited. Re-running
-  the tool overwrites the file.
+  the tool overwrites the file. Generator writes a header comment with
+  the generation date and the number of source CSVs read so users can
+  tell when the file is stale.
 
 ### Code shape
 
@@ -197,19 +273,48 @@ Unmapped target columns stay empty.
   - Fold via `BUCKET_TO_CLASS`. `Drawings` → `drawing`. Everything else
     (including `Undefined`) → `document`.
 
+**Business rule (intentional bias):** `Undefined` folds to `document`, not
+to empty. Rationale: drawing-classification carries higher operational
+risk (drawings drive procurement, fabrication, MOC), so the conservative
+fallback is to label uncertain rows as document. Empty `doc_type` is
+reserved for future use; do not introduce it as a fallback without
+revisiting this spec.
+
 ### `type` rule (fill only if empty)
 
 - If row's existing `type` is non-empty (after strip, ignoring literal
   `NULL`) → leave verbatim.
-- If empty:
-  1. Build lookup `{document_no → type}` once at startup by reading
-     `input/classified_csv/**/*.csv`. Filter to rows where both
-     `document_no` and `type` are non-empty and `type ∈ ALL_OBSERVED_TYPES`.
-     Normalize key (strip, uppercase). On duplicate-key with conflicting
-     values: keep first-seen, warn.
-  2. If row's `document_no` hits the lookup → write that type.
-  3. Else if row's `customer_ref` hits the lookup → write that type.
-  4. Else → leave empty.
+- If empty, consult two **separate** lookup maps, built once at startup
+  from `input/classified_csv/**/*.csv` (paths walked in deterministic
+  sorted order):
+
+  1. `doc_no_lookup: dict[str, str]` — keyed on `normalize_lookup_key(document_no)`.
+  2. `cust_ref_lookup: dict[str, str]` — keyed on `normalize_lookup_key(customer_ref)`.
+
+  Both maps include only rows where `type ∈ ALL_OBSERVED_TYPES` after
+  normalization.
+
+  **Duplicate-key conflict resolution** (applied identically to both maps):
+
+  - Intermediate build accumulates `dict[str, set[str]]`.
+  - After the walk, for each key:
+    - `len(types) == 1` → entry accepted, value is the sole type.
+    - `len(types) > 1` → entry **dropped** and added to a conflict list.
+      Conflicts are printed in the summary so the user can clean source
+      data. The classifier never emits a guessed type from a conflicted
+      key.
+
+  **Lookup order per row:**
+
+  - Try `doc_no_lookup[normalize_lookup_key(row.document_no)]` first.
+  - Fall back to `cust_ref_lookup[normalize_lookup_key(row.customer_ref)]`.
+  - Miss in both → leave `type` empty.
+
+  **Per-source hit accounting:** the summary reports `type` fills broken
+  down as `via_doc_no`, `via_cust_ref`, `empty`. If `via_cust_ref` ever
+  exceeds 10% of total fills, print a loud warning — customer refs are
+  reused / human-entered, and a sudden spike usually means a bad source
+  CSV, not a classifier win.
 
 ### CSV I/O
 
@@ -267,12 +372,13 @@ Cleanup is opportunistic — only items observed during this work.
 - `.gitignore` to ignore `input/classified_csv/` if user prefers not to
   commit derived data (open question — see below).
 
-### Open question
+### Decision: commit `input/classified_csv/`
 
-- Should `input/classified_csv/` be committed to the repo (so the
-  classifier is reproducible without re-running A), or `.gitignore`d?
-  Recommend **commit it** — small text, makes lookups offline-reproducible,
-  enables review-by-diff when source xlsx files change.
+`input/classified_csv/` is committed to the repo. CSV artifacts are
+cheap, the lookup becomes reproducible without re-running A on every
+machine, and source-xlsx changes show up as reviewable diffs. The A
+walker uses sorted/deterministic ordering precisely so commits stay
+clean.
 
 ---
 
@@ -288,7 +394,8 @@ Cleanup is opportunistic — only items observed during this work.
 
 ## Acceptance
 
-1. `convert-classified` produces a CSV for every non-void xlsx under `input/classified/`, all conforming to the 28-column schema.
-2. `build-type-enum` writes `src/classifier/config/type_enum.py` listing 31 known codes + any outliers.
-3. `classify` reads `document.csv`, writes `output/classified.csv` with only `doc_type` and `type` modified, and prints a summary that reconciles filled/preserved/empty counts.
+1. `convert-classified` produces a CSV for every non-void xlsx under `input/classified/`, all conforming to the 28-column schema; `validate_schema` passes on every output.
+2. `build-type-enum` writes `src/classifier/config/type_enum.py` listing 31 known codes (sorted) + any outliers (sorted), with a generation-date header.
+3. `classify` reads `document.csv`, writes `output/classified.csv` with only `doc_type` and `type` modified, row-count and column-order identical to input, and prints a summary covering: total rows, doc_type counts before/after, `type` preserved / filled-via-doc_no / filled-via-cust_ref / empty, conflicted-key list, and a customer-ref-fallback ratio warning if applicable.
 4. `Feed.txt` and `scripts/sort_by_dossier.py` no longer present in the working tree.
+5. Re-running A and B back-to-back on the same source xlsx files produces a byte-identical `input/classified_csv/` tree and a byte-identical `type_enum.py` (determinism check).
