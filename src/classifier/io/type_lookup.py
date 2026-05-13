@@ -19,10 +19,20 @@ from classifier.io.normalize import is_empty, normalize_lookup_key
 
 @dataclass
 class TypeLookup:
+    """Two ``document_no`` / ``customer_ref`` -> ``type`` maps, plus conflicts.
+
+    ``by_doc_no`` and ``by_cust_ref`` only contain keys with exactly one
+    distinct ``type`` seen across all CSVs; conflicting keys are dropped
+    from those maps and surfaced in ``conflicts_doc_no`` / ``conflicts_cust_ref``
+    (values stored as sorted tuples for deterministic emit order).
+
+    ``n_csvs`` is the number of CSV files walked (including ones skipped
+    for missing required columns — the skip is also printed to stdout).
+    """
     by_doc_no: dict[str, str] = field(default_factory=dict)
     by_cust_ref: dict[str, str] = field(default_factory=dict)
-    conflicts_doc_no: dict[str, set[str]] = field(default_factory=dict)
-    conflicts_cust_ref: dict[str, set[str]] = field(default_factory=dict)
+    conflicts_doc_no: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    conflicts_cust_ref: dict[str, tuple[str, ...]] = field(default_factory=dict)
     n_csvs: int = 0
 
 
@@ -35,6 +45,7 @@ def build_lookup(csv_dir: Path) -> TypeLookup:
     for p in paths:
         df = pd.read_csv(p, dtype=str, keep_default_na=False, na_values=[])
         if not {"document_no", "customer_ref", "type"}.issubset(df.columns):
+            print(f"  [skip] {p}: missing required columns")
             continue
         for _, row in df.iterrows():
             t = "" if is_empty(row["type"]) else str(row["type"]).strip().upper()
@@ -52,10 +63,10 @@ def build_lookup(csv_dir: Path) -> TypeLookup:
         if len(ts) == 1:
             lookup.by_doc_no[k] = next(iter(ts))
         else:
-            lookup.conflicts_doc_no[k] = ts
+            lookup.conflicts_doc_no[k] = tuple(sorted(ts))
     for k, ts in raw_cust.items():
         if len(ts) == 1:
             lookup.by_cust_ref[k] = next(iter(ts))
         else:
-            lookup.conflicts_cust_ref[k] = ts
+            lookup.conflicts_cust_ref[k] = tuple(sorted(ts))
     return lookup
