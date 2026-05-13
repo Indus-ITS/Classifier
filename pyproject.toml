@@ -9,9 +9,10 @@ dependencies = [
 ]
 
 [project.scripts]
-classify           = "classifier.cli.classify:main"
-convert-classified = "classifier.tools.convert_classified:main"
-build-type-enum    = "classifier.tools.build_type_enum:main"
+classify            = "classifier.cli.classify:main"
+convert-classified  = "classifier.tools.convert_classified:main"
+build-type-enum     = "classifier.tools.build_type_enum:main"
+learn-type-keywords = "classifier.tools.learn_type_keywords:main"
 
 [build-system]
 requires = ["setuptools>=61"]
