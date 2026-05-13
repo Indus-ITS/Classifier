@@ -12,6 +12,13 @@ of the two user-facing classes. A third class, **Undefined**, is returned
 when no keyword fires — those rows go to a separate file for human
 review rather than being silently dumped into Documents.
 
+## Entry points
+
+- `convert-classified` — convert every xlsx under `input/classified/` (skipping `void/`) into a 28-column CSV under `input/classified_csv/`. Output is committed to the repo so the type lookup is reproducible offline.
+- `build-type-enum` — read `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum).
+- `classify` — read `input/To be classified/document.csv`, fill `doc_type` (always normalized to `drawing`/`document`) and `type` (filled only when empty, via lookup against `input/classified_csv/`), and write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count.
+- `sort-files` — existing file sorter (unchanged).
+
 ## Quick start
 
 ```bash
