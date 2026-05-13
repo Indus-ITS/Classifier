@@ -21,7 +21,7 @@ from typing import Sequence
 
 # Confidence knobs used by pick_type (added in a later task). Tunable
 # by editing this file; not exposed on the CLI.
-MIN_SCORE: float = 2.0
+MIN_SCORE: float = 1.5
 MIN_MARGIN: float = 1.0
 
 # Connector words that carry no classification signal. Used by both the
@@ -102,3 +102,99 @@ def candidate_phrases(tokens: Sequence[str],
                 continue
             out.append(ng)
     return out
+
+
+def _index_phrases_in(tokens: Sequence[str], phrase_tokens: Sequence[str]) -> int:
+    """Return the start index where ``phrase_tokens`` occurs in ``tokens``, or -1.
+
+    Plain linear scan; only the first occurrence is reported (we don't
+    score the same phrase twice in one title even if it repeats).
+    """
+    n, m = len(tokens), len(phrase_tokens)
+    if m == 0 or m > n:
+        return -1
+    for i in range(n - m + 1):
+        if all(tokens[i + j] == phrase_tokens[j] for j in range(m)):
+            return i
+    return -1
+
+
+def score_types(title: str) -> dict[str, float]:
+    """Cumulative score per type code from matching the configured rules.
+
+    Algorithm, per type:
+      1. Iterate (phrase, weight) in the order stored in the rules file
+         (highest weight first).
+      2. For each phrase, find its position in the title's token list.
+         If found in a SPAN that hasn't already been consumed (by an
+         earlier higher-weight phrase for the same type), record the
+         match and consume that span. This prevents an overlapping
+         shorter n-gram from double-counting (longest/highest-weight
+         match wins).
+      3. Span consumption is per-type. Different types match
+         independently against the same tokens.
+
+    Types absent from the result dict had no matches.
+    """
+    # Import lazily so the module is still importable when
+    # type_keywords.py hasn't been generated yet.
+    from classifier.config.type_keywords import TYPE_KEYWORD_RULES
+
+    tokens = canonicalize_title(title)
+    if not tokens:
+        return {}
+
+    scores: dict[str, float] = {}
+    for type_code, rules in TYPE_KEYWORD_RULES.items():
+        consumed: list[tuple[int, int]] = []  # list of (start, end) half-open
+        total = 0.0
+        for phrase_text, weight in rules:
+            phrase = phrase_text.split(" ")
+            start = _index_phrases_in(tokens, phrase)
+            if start < 0:
+                continue
+            end = start + len(phrase)
+            if any(not (end <= cs or start >= ce) for cs, ce in consumed):
+                continue  # overlaps an already-consumed span
+            consumed.append((start, end))
+            total += weight
+        if total > 0:
+            scores[type_code] = total
+    return scores
+
+
+def pick_type(scores: dict[str, float]) -> dict:
+    """Return ``{type, score, runner_up, runner_up_score, confidence}``.
+
+    Confidence:
+      * ``high`` iff top >= MIN_SCORE and (top - runner_up) >= MIN_MARGIN
+      * ``low``  iff top >= MIN_SCORE and (top - runner_up) <  MIN_MARGIN
+      * ``none`` otherwise (no matches, or top < MIN_SCORE)
+
+    Ties broken alphabetically.
+    """
+    if not scores:
+        return {
+            "type": "", "score": 0.0,
+            "runner_up": "", "runner_up_score": 0.0,
+            "confidence": "none",
+        }
+    ranked = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
+    top_code, top_score = ranked[0]
+    if len(ranked) > 1:
+        rup_code, rup_score = ranked[1]
+    else:
+        rup_code, rup_score = "", 0.0
+    if top_score < MIN_SCORE:
+        confidence = "none"
+    elif (top_score - rup_score) < MIN_MARGIN:
+        confidence = "low"
+    else:
+        confidence = "high"
+    return {
+        "type": top_code if confidence != "none" else "",
+        "score": top_score,
+        "runner_up": rup_code,
+        "runner_up_score": rup_score,
+        "confidence": confidence,
+    }
