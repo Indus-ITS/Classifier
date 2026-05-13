@@ -12,13 +12,6 @@ of the two user-facing classes. A third class, **Undefined**, is returned
 when no keyword fires — those rows go to a separate file for human
 review rather than being silently dumped into Documents.
 
-## Entry points
-
-- `convert-classified` — convert every xlsx under `input/classified/` (skipping `void/`) into a 28-column CSV under `input/classified_csv/`. Output is committed to the repo so the type lookup is reproducible offline.
-- `build-type-enum` — read `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum).
-- `classify` — read `input/To be classified/document.csv`, fill `doc_type` (always normalized to `drawing`/`document`) and `type` (filled only when empty, via lookup against `input/classified_csv/`), and write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count.
-- `sort-files` — existing file sorter (unchanged).
-
 ## Quick start
 
 ```bash
@@ -45,8 +38,10 @@ options.
 
 | Command | What it does | Output |
 |---|---|---|
-| `classify` | Classify schedule rows | [output/classified.csv](output/classified.csv) |
+| `classify` | Classify schedule rows from `input/To be classified/document.csv`; fills `doc_type` (`drawing`/`document`) and `type` (via lookup) while preserving the 28-column schema | [output/classified.csv](output/classified.csv) |
 | `sort-files` | Interactive CLI: sort/copy files into class folders | files moved/copied into `Drawings/` `Documents/` `Undefined/` `Unmatched/` |
+| `convert-classified` | Convert each xlsx under `input/classified/` (skipping `void/`) into a 28-column CSV; output is committed so the type lookup is reproducible offline | `input/classified_csv/*.csv` |
+| `build-type-enum` | Regenerate the canonical 3-letter `type` enum from `input/classified_csv/` | [src/classifier/config/type_enum.py](src/classifier/config/type_enum.py) |
 | `harvest` | Build the labelled corpus from `input/classified/` | `output/helpers/labelled_corpus.csv` |
 | `evaluate` | Measure classifier accuracy on the labelled corpus | `output/helpers/evaluation_report.txt` + per-row predictions CSV |
 | `dump-buckets` | Dump the description → bucket → class mapping for senior review | `output/bucket_mapping.csv` |
