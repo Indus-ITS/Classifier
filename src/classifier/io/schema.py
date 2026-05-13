@@ -2,9 +2,13 @@
 
 Source of truth: ``input/To be classified/document.csv`` header row.
 All pipeline stages must read and write rows in this exact order.
+
+Not to be confused with ``classifier.config.schema``, which holds the
+legacy 33-column audit schema.
 """
 from __future__ import annotations
 
+from collections import Counter
 from typing import Sequence
 
 TARGET_COLUMNS: tuple[str, ...] = (
@@ -57,6 +61,7 @@ def validate_schema(columns: Sequence[str]) -> None:
     out_of_order = (
         sorted(expected) == sorted(actual) and expected != actual
     )
+    duplicates = [c for c, n in Counter(actual).items() if n > 1]
     msg = ["schema mismatch:"]
     if len(actual) != len(expected):
         msg.append(f"  length: got {len(actual)}, expected {len(expected)}")
@@ -66,4 +71,6 @@ def validate_schema(columns: Sequence[str]) -> None:
         msg.append(f"  extra: {extra}")
     if out_of_order:
         msg.append("  order differs from TARGET_COLUMNS")
+    if duplicates:
+        msg.append(f"  duplicates: {duplicates}")
     raise SystemExit("\n".join(msg))
