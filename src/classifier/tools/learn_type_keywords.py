@@ -156,7 +156,7 @@ def render(rules: dict[str, tuple[tuple[str, float], ...]],
            n_rows: int,
            source_root: Path) -> str:
     """Render the generated module text."""
-    now = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     untrained_list = ", ".join(
         f"{t} ({class_counts.get(t, 0)})" for t in sorted(untrained)
     )
