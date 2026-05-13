@@ -16,6 +16,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _TRAILING_PUNCT_RE = re.compile(r"[\s:.\-_#]+$")
 _SLUG_REPLACE_RE = re.compile(r"[^a-z0-9_-]+")
 _SLUG_COLLAPSE_RE = re.compile(r"_+")
+_SLUG_COLLAPSE_DASH_RE = re.compile(r"-+")
 
 
 def is_empty(value: object) -> bool:
@@ -54,7 +55,7 @@ def normalize_header_token(value: object) -> str:
     s = s.translate(_DASHES)
     s = s.lower().strip()
     s = _TRAILING_PUNCT_RE.sub("", s)
-    s = _WHITESPACE_RE.sub(" ", s)
+    s = _WHITESPACE_RE.sub(" ", s).strip()
     return s
 
 
@@ -66,5 +67,7 @@ def slugify_sheet(name: str) -> str:
     """
     s = unicodedata.normalize("NFKC", name).lower()
     s = _SLUG_REPLACE_RE.sub("_", s)
-    s = _SLUG_COLLAPSE_RE.sub("_", s).strip("_-")
+    s = _SLUG_COLLAPSE_RE.sub("_", s)
+    s = _SLUG_COLLAPSE_DASH_RE.sub("-", s)
+    s = s.strip("_-")
     return s or "sheet"
