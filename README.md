@@ -1,51 +1,31 @@
 # Document Classifier
 
 Classifies engineering deliverable rows from project schedule sheets into
-two classes — **Drawings** or **Documents** — and (optionally) sorts the
-referenced files into class folders for transmittal.
-
-The classification is keyword-based: regex rules score the document title
-against ten internal buckets (Drawings, Isometrics, Datasheets,
-Specifications, Calculations, Reports, Lists/MTOs/BOMs,
-Procedures/Plans, CRS, Documents) and the winning bucket folds into one
-of the two user-facing classes. A third class, **Undefined**, is returned
-when no keyword fires — those rows go to a separate file for human
-review rather than being silently dumped into Documents.
+two classes — **Drawings** or **Documents** — by reading a canonical
+28-column CSV, filling `doc_type` from keyword scoring and `type` from a
+lookup built from labelled reference indices.
 
 ## Quick start
 
 ```bash
 pip install -e .
 
-# 1. Classify schedule rows
 classify
-
-# 2. (Optional) Sort the referenced files into class folders
-sort-files --schedule "input/To be classified/sahil schedule.xls" \
-           --source-dir /path/to/your/docs
 ```
 
-`classify` reads every `*.xls*` under `input/To be classified/` and
-writes [output/classified.csv](output/classified.csv).
-
-`sort-files` is an interactive CLI that takes the same schedule plus a
-directory of files (named by `cust_ref`) and routes them into
-`Drawings/`, `Documents/`, `Undefined/`, `Unmatched/` either in-place or
-by copying to a destination directory. Run with `--help` for full
-options.
+`classify` reads `input/To be classified/document.csv`, fills `doc_type`
+(normalized to `drawing`/`document`) and `type` (filled only when empty,
+via the lookup built from `input/classified_csv/`), and writes
+[output/classified.csv](output/classified.csv). The output preserves the
+input's 28-column schema, column order, and row count.
 
 ## Console scripts
 
-| Command | What it does | Output |
-|---|---|---|
-| `classify` | Classify schedule rows from `input/To be classified/document.csv`; fills `doc_type` (`drawing`/`document`) and `type` (via lookup) while preserving the 28-column schema | [output/classified.csv](output/classified.csv) |
-| `sort-files` | Interactive CLI: sort/copy files into class folders | files moved/copied into `Drawings/` `Documents/` `Undefined/` `Unmatched/` |
-| `convert-classified` | Convert each xlsx under `input/classified/` (skipping `void/`) into a 28-column CSV; output is committed so the type lookup is reproducible offline | `input/classified_csv/*.csv` |
-| `build-type-enum` | Regenerate the canonical 3-letter `type` enum from `input/classified_csv/` | [src/classifier/config/type_enum.py](src/classifier/config/type_enum.py) |
-| `harvest` | Build the labelled corpus from `input/classified/` | `output/helpers/labelled_corpus.csv` |
-| `evaluate` | Measure classifier accuracy on the labelled corpus | `output/helpers/evaluation_report.txt` + per-row predictions CSV |
-| `dump-buckets` | Dump the description → bucket → class mapping for senior review | `output/bucket_mapping.csv` |
-| `dump-undefined` | Filter `output/classified.csv` to just the rows where `class=Undefined` | `output/undefined_for_review.csv` |
+| Command              | What it does |
+|----------------------|--------------|
+| `classify`           | Read `input/To be classified/document.csv`, fill `doc_type` (normalized to `drawing`/`document`) and `type` (filled only when empty, via the lookup built from `input/classified_csv/`), write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
+| `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
+| `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
 
 ## Layout
 
@@ -57,124 +37,19 @@ classifier/
 ├── src/classifier/                   # the package
 │   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
 │   ├── core/                         # pure logic (scoring, extraction, normalisation, ...)
-│   ├── pipeline/                     # orchestration (enrich, audit, selftest)
-│   ├── io/                           # file readers/writers (schedule, dossier, transmittals, csv)
-│   ├── routing/                      # sort-files matching/planning/execution
+│   ├── pipeline/                     # orchestration (enrich, audit)
+│   ├── io/                           # file readers/writers (csv)
 │   ├── cli/                          # console entry points + presentation helpers
-│   └── tools/                        # offline diagnostic commands
+│   └── tools/                        # offline diagnostic commands (convert-classified, build-type-enum)
 │
 ├── input/
-│   ├── To be classified/             # *.xls schedule sheets to classify
-│   └── classified/                   # labelled reference indices (drive the corpus)
+│   ├── To be classified/             # document.csv to classify
+│   ├── classified/                   # labelled reference indices (xls/xlsx source)
+│   └── classified_csv/               # converted 28-column CSVs (commit-tracked)
 │
-├── output/
-│   ├── classified.csv                # ← MAIN classifier output
-│   ├── bucket_mapping.csv            # description → bucket → class for senior review
-│   ├── undefined_for_review.csv      # rows that need human review
-│   └── helpers/                      # diagnostic outputs (labelled_corpus.csv, evaluation_report.txt, ...)
-│
-└── docs/
-    ├── specs/                        # design docs
-    └── plans/                        # implementation plans
+└── output/
+    └── classified.csv                # ← MAIN classifier output
 ```
-
-## Output schema — [output/classified.csv](output/classified.csv)
-
-| Column | Meaning |
-|---|---|
-| `title` | Document title from the schedule |
-| `doc_number` | PCS Doc No. (project document number) |
-| `cust_ref` | Customer reference number (e.g. `16-01-19-2602`) |
-| `revision` | Revision letter / number from the schedule |
-| `discipline` | Discipline as recorded in the schedule (CIVIL, INST, PIPNG, etc.) |
-| `class` | **Primary classification** — `Drawings`, `Documents`, or `Undefined` (no keyword fired — needs human review) |
-| `subtype` | 10-bucket label (Drawings, Isometrics, Datasheets, Specifications, Calculations, Reports, Lists_MTOs_BOMs, Procedures_Plans, CRS, Documents) — kept as a finer-grained sub-routing hint |
-| `source_sheet` | Filename of the schedule the row came from |
-| `discipline_inferred` | Discipline guessed from title keywords (diagnostic — compare against `discipline`) |
-| `score` | Total weight that fired in the winning subtype |
-| `top_weight` | Highest single weight that fired (drives confidence) |
-| `confidence` | `high` (top weight 5) / `medium` (3-4) / `low` (1-2 or fallthrough) |
-| `runner_up` | Second-place subtype |
-| `runner_up_score` | Second-place score (close calls = ambiguous classifications) |
-
-The first seven columns are the user-facing identity + classification;
-the rest are explainability fields useful when auditing or tuning.
-`class` is what most consumers care about; `subtype` is preserved so the
-existing 10-bucket sub-routing remains available.
-
-**Filtering tip:** for clean classifications use `class != "Undefined"`;
-for items needing human review use `class == "Undefined"`.
-
-## sort-files — file routing
-
-Given a schedule and a directory whose filenames embed the schedule's
-`cust_ref` numbers, this CLI copies one file per logical document into
-class folders, plus an Excel sidecar listing the siblings that were not
-copied.
-
-```bash
-# Interactive (prompts for dest-dir)
-sort-files --schedule schedule.xls --source-dir ./docs
-
-# Non-interactive
-sort-files --schedule schedule.xls --source-dir ./docs \
-           --dest-dir ./sorted --yes
-```
-
-| Flag | Purpose |
-|---|---|
-| `--schedule PATH` | Schedule `.xls` (must have Sheet1 with `Cust Ref #` and `Title`) |
-| `--source-dir PATH` | Directory containing the files. Walked recursively. Files already inside class folders (`Drawings/`, `Documents/`, etc.) are skipped so re-runs are safe. |
-| `--dest-dir PATH` | Destination directory. Prompted if omitted. |
-| `--on-duplicate {error\|skip\|rename}` | What to do when two source files would land at the same destination. `error` (default): abort. `skip`: keep first by path order. `rename`: append numeric suffix (`foo.pdf`, `foo-2.pdf`, ...). |
-| `--include-title` | Append the schedule's Title to the destination filename: `<original_stem> - <safe_title><ext>`. The title is sanitized and truncated to `--title-max-len`. Unmatched files keep their original name. |
-| `--title-max-len N` | Max characters of the title to include (default 100). |
-| `--yes`, `-y` | Skip the final confirmation |
-| `--no-color` | Disable ANSI color (auto-disabled when not a TTY or `NO_COLOR` is set) |
-
-**Dedup behaviour:**
-- Files are grouped by stem with the revision suffix stripped (anchored
-  on the `cust_ref` so a bare 4-digit cust_ref tail is not misread as a
-  revision).
-- Within a group, the latest revision wins. Digit revisions (issued)
-  supersede letter revisions (draft); within a bucket, lexically larger
-  wins.
-- Within the latest revision, format priority: `pdf > doc/docx > xls/xlsx`.
-- Other extensions (`.dwg`, `.rar`, `.lnk`, ...) are never copied — they
-  are recorded in the sidecar as related files.
-- Groups with no PDF/DOC/XLS candidate produce no output (a console
-  counter reports the count).
-
-**Resulting folder layout:**
-
-The output is a **two-level `class / discipline / file`** tree, plus
-the sidecar. Discipline comes from the schedule's `Discip` column,
-sanitized for filesystem safety (`ENGG QA/QC` → `ENGG_QA_QC`, missing →
-`_UNKNOWN`):
-
-```
-<dest>/
-├── Drawings/
-│   ├── CIVIL/
-│   ├── PIPNG/
-│   └── ...
-├── Documents/
-├── Undefined/
-├── Unmatched/                  # no schedule match — kept flat
-└── related-documents.xlsx      # one row per logical document
-```
-
-**`related-documents.xlsx` columns:**
-`cust_ref`, `title`, `class`, `discipline`, `revision`, `chosen_file`,
-`chosen_format`, `related_files` (semicolon-joined basenames),
-`related_count`, `source_group_dir`.
-
-Safety:
-- **Collision detection** — aborts before any I/O if a destination path
-  already exists or two source files would map to the same destination.
-- **Honest reporting** — separately counts files with no `cust_ref` in
-  the name, files whose ref isn't in the schedule, and schedule rows
-  with no matching file on disk.
 
 ## How to iterate on accuracy
 
@@ -183,24 +58,6 @@ Safety:
    `KEYWORD_RULES[bucket]` is the main lever. Weights are 1-5; weight 5
    is required for `high` confidence.
 2. Re-run `classify` and inspect `output/classified.csv`.
-3. Check what's still falling through:
-
-   ```bash
-   dump-undefined     # writes output/undefined_for_review.csv
-   ```
-
-4. Measure regression-impact at scale on the labelled corpus:
-
-   ```bash
-   harvest    # rebuilds output/helpers/labelled_corpus.csv
-   evaluate   # writes evaluation_report.txt + per-row predictions
-   ```
-
-   The corpus is built from labelled reference indices under
-   `input/classified/` (Sahil/Shah/Asab/Qusahwira drawing & document
-   indices). Each row's `expected_bucket` is derived from the project's
-   own doc-type code, not from the title — so the measurement is
-   independent of the keyword bank.
 
 ### Typo tolerance policy
 
@@ -210,8 +67,7 @@ the data (e.g. `arra?n?g(e)?ment` for ARRANGEMENT/ARRANGMENT/ARRAGEMENT,
 
 **Generic fuzzy matching (Levenshtein/soundex) is intentionally not
 used** — it introduces unpredictable false positives that are expensive
-to debug. When a new typo surfaces in
-`output/undefined_for_review.csv`, the fix is to relax the relevant
+to debug. When a new typo surfaces, the fix is to relax the relevant
 regex pattern in
 [src/classifier/config/keywords.py](src/classifier/config/keywords.py).
 
@@ -226,7 +82,6 @@ regex pattern in
 | `BUCKET_PRIMARY_CODE` | [config/buckets.py](src/classifier/config/buckets.py) | Bucket → 3-letter code used in proposed target filename |
 | `DISCIPLINE_KEYWORD_RULES` | [config/keywords.py](src/classifier/config/keywords.py) | `[(regex, discipline), ...]` — fallback discipline inference |
 | `REF_PATTERN`, `CRS_PATTERN`, `COVER_PATTERN` | [config/patterns.py](src/classifier/config/patterns.py) | Regex strings for ref / CRS / cover-sheet detection |
-| `GATE_THRESHOLD` | [config/paths.py](src/classifier/config/paths.py) | Self-test pass bar for the 256-row dossier selftest |
 
 ## Bucket → Class mapping
 
@@ -245,15 +100,8 @@ The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS`:
 | CRS | Documents |
 | Documents | Documents |
 
-Plus the **Undefined** class is returned when `score_sum == 0` (no
-keyword fired). This is implemented in
-[`fold_to_class()`](src/classifier/core/scoring.py) and used by both
-`classify` and `evaluate` so they apply the same rule.
-
-For senior review of the underlying doc-code → bucket → class mapping,
-run `dump-buckets` and share
-[output/bucket_mapping.csv](output/bucket_mapping.csv) (sorted by class
-then bucket).
+This fold is implemented in
+[`fold_to_class()`](src/classifier/core/scoring.py).
 
 ## Architecture
 
@@ -262,19 +110,18 @@ The package is layered, with imports flowing in one direction only:
 ```
 presentation (cli)
     ↓
-application (routing, pipeline)
+application (pipeline)
     ↓
 domain (core)
     ↓
 infrastructure (io)
 ```
 
-- **`core/`** is pure logic: regex extraction, scoring, revisions,
-  target-path construction. No I/O, no upward imports.
-- **`io/`** wraps file readers/writers (`pandas.read_excel`, CSV).
-- **`pipeline/`** orchestrates `core/` + `io/` for the enrich/audit/selftest flows.
-- **`routing/`** holds the file-routing logic for `sort-files`
-  (matching, plan, analysis, resolution, execute).
+- **`core/`** is pure logic: regex extraction, scoring, revisions. No
+  I/O, no upward imports.
+- **`io/`** wraps file readers/writers (CSV).
+- **`pipeline/`** orchestrates `core/` + `io/` for the enrich/audit flows.
 - **`cli/`** is presentation only — argparse, prompts, ANSI colors,
   progress bars, formatted reports.
-- **`tools/`** is the home of standalone diagnostic commands.
+- **`tools/`** is the home of standalone diagnostic commands
+  (`convert-classified`, `build-type-enum`).
