@@ -60,6 +60,16 @@ def _fill_type(row_type: str, doc_no: str, cust_ref: str,
     """Return ``(value, reason)``.
 
     reason is one of: ``preserved``, ``via_doc_no``, ``via_cust_ref``, ``empty``.
+
+    Lookup strategy:
+      1. ``input.document_no`` against ``lookup.by_doc_no`` (direct hit).
+      2. ``input.customer_ref`` against ``lookup.by_doc_no`` (the input's
+         ``customer_ref`` typically carries the original document number that
+         appears as ``document_no`` in the canonical index — that's the main
+         cross-reference path).
+      3. ``input.customer_ref`` against ``lookup.by_cust_ref`` (only useful if
+         a future canonical CSV ever populates its ``customer_ref`` column).
+      4. Miss → empty.
     """
     if not is_empty(row_type):
         return str(row_type).strip(), "preserved"
@@ -67,8 +77,11 @@ def _fill_type(row_type: str, doc_no: str, cust_ref: str,
     if k_doc and k_doc in lookup.by_doc_no:
         return lookup.by_doc_no[k_doc], "via_doc_no"
     k_cust = normalize_lookup_key(cust_ref)
-    if k_cust and k_cust in lookup.by_cust_ref:
-        return lookup.by_cust_ref[k_cust], "via_cust_ref"
+    if k_cust:
+        if k_cust in lookup.by_doc_no:
+            return lookup.by_doc_no[k_cust], "via_cust_ref"
+        if k_cust in lookup.by_cust_ref:
+            return lookup.by_cust_ref[k_cust], "via_cust_ref"
     return "", "empty"
 
 
