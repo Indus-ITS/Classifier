@@ -30,19 +30,21 @@ from classifier.tools.learn_type_keywords import _collect_rows, learn
 
 def _score_with_rules(title: str,
                        rules: dict[str, tuple[tuple[str, float], ...]]
-                       ) -> dict[str, float]:
+                       ) -> dict[str, tuple[float, int]]:
     """Mirror of score_types but against an explicitly-provided rules dict.
 
     Mirrors the per-type longest-match span consumption used by
-    ``classifier.core.type_scoring.score_types``.
+    ``classifier.core.type_scoring.score_types`` and returns the same
+    ``(score, n_phrases)`` tuple shape.
     """
     tokens = canonicalize_title(title)
     if not tokens:
         return {}
-    scores: dict[str, float] = {}
+    scores: dict[str, tuple[float, int]] = {}
     for type_code, type_rules in rules.items():
         consumed: list[tuple[int, int]] = []
         total = 0.0
+        n_phrases = 0
         for phrase_text, weight in type_rules:
             phrase = phrase_text.split(" ")
             if not phrase or len(phrase) > len(tokens):
@@ -59,8 +61,9 @@ def _score_with_rules(title: str,
                 continue
             consumed.append((found, end))
             total += weight
+            n_phrases += 1
         if total > 0:
-            scores[type_code] = total
+            scores[type_code] = (total, n_phrases)
     return scores
 
 

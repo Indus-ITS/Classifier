@@ -23,6 +23,7 @@ from typing import Sequence
 # by editing this file; not exposed on the CLI.
 MIN_SCORE: float = 1.5
 MIN_MARGIN: float = 1.0
+SINGLE_PHRASE_FLOOR: float = 2.5
 
 # Connector words that carry no classification signal. Used by both the
 # learner (when emitting n-grams) and the scorer (when building
@@ -143,8 +144,8 @@ def _index_phrases_in(tokens: Sequence[str], phrase_tokens: Sequence[str]) -> in
     return -1
 
 
-def score_types(title: str) -> dict[str, float]:
-    """Cumulative score per type code from matching the configured rules.
+def score_types(title: str) -> dict[str, tuple[float, int]]:
+    """Cumulative ``(score, n_phrases)`` per type from matching the rules.
 
     Algorithm, per type:
       1. Iterate (phrase, weight) in the order stored in the rules file
@@ -152,13 +153,12 @@ def score_types(title: str) -> dict[str, float]:
       2. For each phrase, find its position in the title's token list.
          If found in a SPAN that hasn't already been consumed (by an
          earlier higher-weight phrase for the same type), record the
-         match and consume that span. This prevents an overlapping
-         shorter n-gram from double-counting (longest/highest-weight
-         match wins).
+         match and consume that span.
       3. Span consumption is per-type. Different types match
          independently against the same tokens.
 
-    Types absent from the result dict had no matches.
+    Returned tuple is (cumulative score, number of phrases that fired).
+    Types with no matches are absent from the result dict.
     """
     # Import lazily so the module is still importable when
     # type_keywords.py hasn't been generated yet.
@@ -168,10 +168,11 @@ def score_types(title: str) -> dict[str, float]:
     if not tokens:
         return {}
 
-    scores: dict[str, float] = {}
+    scores: dict[str, tuple[float, int]] = {}
     for type_code, rules in TYPE_KEYWORD_RULES.items():
         consumed: list[tuple[int, int]] = []  # list of (start, end) half-open
         total = 0.0
+        n_phrases = 0
         for phrase_text, weight in rules:
             phrase = phrase_text.split(" ")
             start = _index_phrases_in(tokens, phrase)
@@ -179,20 +180,23 @@ def score_types(title: str) -> dict[str, float]:
                 continue
             end = start + len(phrase)
             if any(not (end <= cs or start >= ce) for cs, ce in consumed):
-                continue  # overlaps an already-consumed span
+                continue  # overlaps an already-consumed span; same concept
             consumed.append((start, end))
             total += weight
+            n_phrases += 1
         if total > 0:
-            scores[type_code] = total
+            scores[type_code] = (total, n_phrases)
     return scores
 
 
-def pick_type(scores: dict[str, float]) -> dict:
-    """Return ``{type, score, runner_up, runner_up_score, confidence}``.
+def pick_type(scores: dict[str, tuple[float, int]]) -> dict:
+    """Return ``{type, score, runner_up, runner_up_score, n_phrases, confidence}``.
 
     Confidence:
-      * ``high`` iff top >= MIN_SCORE and (top - runner_up) >= MIN_MARGIN
-      * ``low``  iff top >= MIN_SCORE and (top - runner_up) <  MIN_MARGIN
+      * ``high`` iff top >= MIN_SCORE AND (top - runner_up) >= MIN_MARGIN
+                 AND (n_phrases >= 2 OR top >= SINGLE_PHRASE_FLOOR)
+      * ``low``  iff top >= MIN_SCORE AND the high gate failed for any
+                 of the above reasons (margin OR single-phrase floor)
       * ``none`` otherwise (no matches, or top < MIN_SCORE)
 
     Ties broken alphabetically.
@@ -201,17 +205,19 @@ def pick_type(scores: dict[str, float]) -> dict:
         return {
             "type": "", "score": 0.0,
             "runner_up": "", "runner_up_score": 0.0,
-            "confidence": "none",
+            "n_phrases": 0, "confidence": "none",
         }
-    ranked = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
-    top_code, top_score = ranked[0]
+    ranked = sorted(scores.items(), key=lambda kv: (-kv[1][0], kv[0]))
+    top_code, (top_score, top_n_phrases) = ranked[0]
     if len(ranked) > 1:
-        rup_code, rup_score = ranked[1]
+        rup_code, (rup_score, _) = ranked[1]
     else:
         rup_code, rup_score = "", 0.0
     if top_score < MIN_SCORE:
         confidence = "none"
     elif (top_score - rup_score) < MIN_MARGIN:
+        confidence = "low"
+    elif top_n_phrases < 2 and top_score < SINGLE_PHRASE_FLOOR:
         confidence = "low"
     else:
         confidence = "high"
@@ -220,5 +226,6 @@ def pick_type(scores: dict[str, float]) -> dict:
         "score": top_score,
         "runner_up": rup_code,
         "runner_up_score": rup_score,
+        "n_phrases": top_n_phrases,
         "confidence": confidence,
     }
