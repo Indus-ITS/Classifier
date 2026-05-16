@@ -11,6 +11,7 @@ KNOWN_TYPES: frozenset[str] = frozenset({
     'DAS',
     'DBD',
     'DCE',
+    'DDT',
     'DGA',
     'DHZ',
     'DPP',
@@ -19,6 +20,7 @@ KNOWN_TYPES: frozenset[str] = frozenset({
     'DWD',
     'DWG',
     'IDX',
+    'ISO',
     'LST',
     'MSD',
     'MTO',
@@ -35,6 +37,7 @@ KNOWN_TYPES: frozenset[str] = frozenset({
     'SOW',
     'SPC',
     'STD',
+    'TBE',
 })
 
 OBSERVED_OUTLIERS: dict[str, int] = {

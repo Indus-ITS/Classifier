@@ -59,6 +59,9 @@ TYPE_TO_BUCKET: dict = {
     "IDX": "Lists_MTOs_BOMs", "REG": "Lists_MTOs_BOMs", "SCH": "Lists_MTOs_BOMs",
     "PRO": "Procedures_Plans", "PLN": "Procedures_Plans", "PHL": "Procedures_Plans",
     "REQ": "Documents",
+    "TBE": "Documents",     # Technical Bid Evaluation
+    "ISO": "Isometrics",    # Isometric drawings (bucket exists)
+    "DDT": "Drawings",      # Detail drawings (foundation/structural/roof)
 }
 
 # Bucket -> primary 3-letter code used in the proposed target filename
