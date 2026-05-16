@@ -34,6 +34,30 @@ STOP_TOKENS: frozenset[str] = frozenset({
     "ON", "IN", "AT", "FROM", "INTO", "A", "AN",
 })
 
+
+# Curated singular forms. canonicalize_title folds the matching plural
+# form (token + 'S') down to the singular when the singular is in this
+# set. Hand-curated to avoid stem over-generalisation on engineering
+# vocabulary (MULTI-PHASE should not become MULTI-PHAS).
+SINGULAR_FORMS: frozenset[str] = frozenset({
+    "CALCULATION", "DIAGRAM", "DRAWING", "INDEX",
+    "LAYOUT", "LIST", "PROCEDURE", "PROCESS",
+    "REPORT", "REQUISITION", "SCHEDULE", "SHEET",
+    "SPECIFICATION", "STANDARD",
+})
+
+
+def _depluralize(tok: str) -> str:
+    """Fold a curated regular-plural to its singular form.
+
+    Only applies when stripping the trailing 'S' yields a token that's in
+    the SINGULAR_FORMS allowlist. Length guard (>= 5) keeps short common
+    words (IS, AS, OS) unaffected. Not a real stemmer.
+    """
+    if len(tok) >= 5 and tok.endswith("S") and tok[:-1] in SINGULAR_FORMS:
+        return tok[:-1]
+    return tok
+
 _DASHES = str.maketrans({
     "‐": " ", "‑": " ", "‒": " ",
     "–": " ", "—": " ", "―": " ",
@@ -76,7 +100,7 @@ def canonicalize_title(raw: str) -> list[str]:
     s = _WS_RE.sub(" ", s).strip()
     if not s:
         return []
-    return s.split(" ")
+    return [_depluralize(t) for t in s.split(" ")]
 
 
 def _ngrams(tokens: Sequence[str], n: int) -> list[tuple[str, ...]]:
