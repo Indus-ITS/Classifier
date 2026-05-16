@@ -58,6 +58,13 @@ MIN_CLASS_DOCS: int = 4
 MIN_PHRASE_OCCURRENCES: int = 2
 PRECISION_FLOOR: float = 0.6
 AUTO_STOP_FREQ: float = 0.40    # token in > 40% of titles -> stop
+
+# Project-name tokens that should never become signature phrases. These
+# are scrubbed in addition to the curated STOP_TOKENS and the runtime
+# AUTO_STOP_FREQ catch. Extend this when a new project's data lands.
+PROJECT_STOP_TOKENS: frozenset[str] = frozenset({
+    "SAHIL",
+})
 TOP_PHRASES_PER_TYPE: int = 10
 
 
@@ -135,7 +142,7 @@ def learn(rows: Iterable[tuple[str, str, Path]]
     tokenized: list[tuple[str, list[str]]] = [
         (t, canonicalize_title(title)) for t, title, _ in rows
     ]
-    auto_stop = _auto_stopwords([toks for _, toks in tokenized])
+    auto_stop = _auto_stopwords([toks for _, toks in tokenized]) | PROJECT_STOP_TOKENS
 
     # Per-row candidate phrase set (de-duped within row).
     row_phrases: list[tuple[str, set[tuple[str, ...]]]] = []
