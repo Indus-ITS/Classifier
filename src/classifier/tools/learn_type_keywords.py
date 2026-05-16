@@ -58,13 +58,11 @@ MIN_CLASS_DOCS: int = 4
 MIN_PHRASE_OCCURRENCES: int = 2
 PRECISION_FLOOR: float = 0.6
 AUTO_STOP_FREQ: float = 0.40    # token in > 40% of titles -> stop
-
-# Project-name tokens that should never become signature phrases. These
-# are scrubbed in addition to the curated STOP_TOKENS and the runtime
-# AUTO_STOP_FREQ catch. Extend this when a new project's data lands.
-PROJECT_STOP_TOKENS: frozenset[str] = frozenset({
-    "SAHIL",
-})
+SPREAD_STOP_MIN_DOCS: int = 20  # need this many appearances to judge spread
+SPREAD_STOP_MAX_CLASS_SHARE: float = 0.30  # if dominant class is <30% of a
+                                # token's appearances, the token is
+                                # class-agnostic noise (project / site names
+                                # like SAHIL spread evenly across all types).
 TOP_PHRASES_PER_TYPE: int = 10
 
 
@@ -87,16 +85,42 @@ def _collect_rows() -> list[tuple[str, str, Path]]:
     return rows
 
 
-def _auto_stopwords(token_lists: list[list[str]]) -> frozenset[str]:
-    """Tokens appearing in > AUTO_STOP_FREQ of all titles."""
-    if not token_lists:
+def _auto_stopwords(tokenized: list[tuple[str, list[str]]]) -> frozenset[str]:
+    """Identify noise tokens algorithmically. A token is stopped if EITHER:
+
+    * It appears in > AUTO_STOP_FREQ of all titles (overwhelming common
+      across the corpus -- this catches generic English/site words that
+      escape the curated STOP_TOKENS), OR
+    * It appears in >= SPREAD_STOP_MIN_DOCS titles AND its single most
+      common class accounts for < SPREAD_STOP_MAX_CLASS_SHARE of those
+      appearances. A token whose appearances spread roughly uniformly
+      across many classes carries no classification signal -- typically
+      a project name, site name, or generic descriptor (SAHIL, CDS,
+      WATER, AREA). This catches project names without an explicit list.
+
+    Real signature tokens (DATA->DAS, REPORT->REP, SPECIFICATION->SPC)
+    concentrate sharply in one class and stay safe.
+    """
+    if not tokenized:
         return frozenset()
     doc_count_for: Counter[str] = Counter()
-    for toks in token_lists:
+    class_count_for: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    for type_code, toks in tokenized:
         for tok in set(toks):
             doc_count_for[tok] += 1
-    threshold = AUTO_STOP_FREQ * len(token_lists)
-    return frozenset(t for t, n in doc_count_for.items() if n > threshold)
+            class_count_for[tok][type_code] += 1
+    n = len(tokenized)
+    freq_threshold = AUTO_STOP_FREQ * n
+    stops: set[str] = set()
+    for tok, count in doc_count_for.items():
+        if count > freq_threshold:
+            stops.add(tok)
+            continue
+        if count >= SPREAD_STOP_MIN_DOCS:
+            max_share = max(class_count_for[tok].values()) / count
+            if max_share < SPREAD_STOP_MAX_CLASS_SHARE:
+                stops.add(tok)
+    return frozenset(stops)
 
 
 _DIGIT_RE = re.compile(r"\d")
@@ -142,7 +166,7 @@ def learn(rows: Iterable[tuple[str, str, Path]]
     tokenized: list[tuple[str, list[str]]] = [
         (t, canonicalize_title(title)) for t, title, _ in rows
     ]
-    auto_stop = _auto_stopwords([toks for _, toks in tokenized]) | PROJECT_STOP_TOKENS
+    auto_stop = _auto_stopwords(tokenized)
 
     # Per-row candidate phrase set (de-duped within row).
     row_phrases: list[tuple[str, set[tuple[str, ...]]]] = []
