@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -91,6 +92,32 @@ def _auto_stopwords(token_lists: list[list[str]]) -> frozenset[str]:
     return frozenset(t for t, n in doc_count_for.items() if n > threshold)
 
 
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _phrase_is_publishable(ngram: tuple[str, ...]) -> bool:
+    """Reject n-grams that won't transfer across datasets.
+
+    Rejects:
+      * Any n-gram containing a digit-bearing token (project IDs,
+        tag numbers, area suffixes).
+      * Any n-gram whose first or last token has no alphabetic
+        character (lone &, /, or other edge punctuation).
+
+    Middle tokens may be punctuation-only - preserves
+    'PIPING & INSTRUMENT' (middle '&') while rejecting '& INSTRUMENT'
+    and 'PIPING &'.
+    """
+    for tok in ngram:
+        if _DIGIT_RE.search(tok):
+            return False
+    if not any(ch.isalpha() for ch in ngram[0]):
+        return False
+    if not any(ch.isalpha() for ch in ngram[-1]):
+        return False
+    return True
+
+
 def learn(rows: Iterable[tuple[str, str, Path]]
           ) -> tuple[dict[str, tuple[tuple[str, float], ...]],
                       Counter[str],
@@ -113,7 +140,8 @@ def learn(rows: Iterable[tuple[str, str, Path]]
     # Per-row candidate phrase set (de-duped within row).
     row_phrases: list[tuple[str, set[tuple[str, ...]]]] = []
     for t, toks in tokenized:
-        phrases = set(candidate_phrases(toks, extra_stop=auto_stop))
+        phrases = {ph for ph in candidate_phrases(toks, extra_stop=auto_stop)
+                   if _phrase_is_publishable(ph)}
         row_phrases.append((t, phrases))
 
     # phrase_in_class[(type, phrase)] = count
