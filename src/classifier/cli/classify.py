@@ -30,7 +30,9 @@ from pathlib import Path
 import pandas as pd
 
 from classifier.config.buckets import BUCKET_TO_CLASS, TYPE_TO_BUCKET
-from classifier.core.type_scoring import pick_type, score_types
+from classifier.core.type_scoring import (
+    pick_type, pick_type_with_overrides, score_types,
+)
 from classifier.io.normalize import is_empty
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
 
@@ -59,12 +61,13 @@ def _normalize_doc_type(value: str, title: str) -> tuple[str, str]:
             return "drawing", "existing"
         if v in DOCUMENT_ALIASES:
             return "document", "existing"
-    pick = pick_type(score_types(title))
+    pick = pick_type_with_overrides(title)
     if pick["confidence"] == "high":
         bucket = TYPE_TO_BUCKET.get(pick["type"])
         if bucket is not None:
             folded = BUCKET_TO_CLASS[bucket]
-            return ("drawing" if folded == "Drawings" else "document"), "via_keyword"
+            reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
+            return ("drawing" if folded == "Drawings" else "document"), reason_tag
     return "document", "defaulted"
 
 
@@ -78,9 +81,10 @@ def _fill_type(row_type: str, title: str) -> tuple[str, str]:
     """
     if not is_empty(row_type):
         return str(row_type).strip(), "preserved"
-    pick = pick_type(score_types(title))
+    pick = pick_type_with_overrides(title)
     if pick["confidence"] == "high":
-        return pick["type"], "via_keyword"
+        reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
+        return pick["type"], reason_tag
     return "", "empty"
 
 
@@ -136,7 +140,7 @@ def main() -> None:
     print(f"  reasons: {dict(doc_type_reason)}")
     print()
     print("type fill outcomes:")
-    for k in ("preserved", "via_keyword", "empty"):
+    for k in ("preserved", "via_override", "via_keyword", "empty"):
         print(f"  {k:14s} {type_reason.get(k, 0):>6}")
 
 
