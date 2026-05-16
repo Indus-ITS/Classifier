@@ -229,3 +229,96 @@ def pick_type(scores: dict[str, tuple[float, int]]) -> dict:
         "n_phrases": top_n_phrases,
         "confidence": confidence,
     }
+
+
+def _phrase_matches(tokens: Sequence[str],
+                     phrase: Sequence[str]) -> bool:
+    """True iff ``phrase`` appears as a contiguous subsequence in ``tokens``.
+
+    Exact per-token equality. No fuzzy / substring matching — the
+    shared canonicalizer is responsible for normalization upstream.
+    """
+    n, m = len(tokens), len(phrase)
+    if m == 0 or m > n:
+        return False
+    for i in range(n - m + 1):
+        if all(tokens[i + j] == phrase[j] for j in range(m)):
+            return True
+    return False
+
+
+def pick_type_with_overrides(title: str) -> dict:
+    """Four-phase pick: override → score → negative prune → choose.
+
+    Returns the same dict shape as ``pick_type`` plus a ``reason``
+    field ∈ {"override", "scored", "none"} so callers can surface the
+    path in summary reports.
+
+    Phase 1: deterministic HARD_OVERRIDES. Within each type, try
+        phrases longest-first so the most specific phrase wins. Across
+        types, pick the type whose matched phrase was longest (alpha
+        tie-break). On hit, return immediately with confidence=high
+        and reason=override.
+
+    Phase 2: learned keyword scoring via the existing ``score_types``.
+
+    Phase 3: NEGATIVE_KEYWORDS prune. For each type still in the
+        scored dict, if any negative phrase matches the title, scale
+        that type's score by NEGATIVE_MULTIPLIER (currently 0.0 —
+        full suppression). Soft-suppression via multiplier keeps the
+        door open for partial suppression later without redesign.
+
+    Phase 4: existing ``pick_type`` on the filtered scored dict.
+    """
+    # Lazy imports so the module stays importable when the config
+    # files haven't been written yet.
+    from classifier.config.type_overrides import (
+        HARD_OVERRIDES, NEGATIVE_KEYWORDS,
+    )
+
+    tokens = canonicalize_title(title)
+    if not tokens:
+        result = pick_type({})
+        result["reason"] = "none"
+        return result
+
+    # Phase 1
+    override_hits: list[tuple[int, str]] = []  # (matched_phrase_len, type_code)
+    for type_code, phrases in HARD_OVERRIDES.items():
+        for phrase in sorted(phrases, key=len, reverse=True):
+            if _phrase_matches(tokens, phrase):
+                override_hits.append((len(phrase), type_code))
+                break  # first (longest) phrase hit for this type is enough
+    if override_hits:
+        override_hits.sort(key=lambda t: (-t[0], t[1]))
+        chosen_type = override_hits[0][1]
+        return {
+            "type": chosen_type,
+            "score": float("inf"),
+            "runner_up": "",
+            "runner_up_score": 0.0,
+            "n_phrases": 1,
+            "confidence": "high",
+            "reason": "override",
+        }
+
+    # Phase 2
+    scores = score_types(title)
+
+    # Phase 3
+    NEGATIVE_MULTIPLIER: float = 0.0
+    for type_code, neg_phrases in NEGATIVE_KEYWORDS.items():
+        if type_code not in scores:
+            continue
+        for phrase in neg_phrases:
+            if _phrase_matches(tokens, phrase):
+                cur_score, cur_n = scores[type_code]
+                scores[type_code] = (cur_score * NEGATIVE_MULTIPLIER, cur_n)
+                break
+    scores = {t: v for t, v in scores.items() if v[0] > 0}
+
+    # Phase 4
+    result = pick_type(scores)
+    result["reason"] = "scored" if result["confidence"] != "none" else "none"
+    return result
+
