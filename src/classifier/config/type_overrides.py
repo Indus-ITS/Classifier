@@ -94,6 +94,28 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("SCHEMATIC", "BLOCK", "DIAGRAM"),
         ("ARCHITECTURE", "DIAGRAM"),
     ),
+    # Detail drawings — tank/structural fabrication-detail family.
+    # Activated per user direction after the override pass found 28
+    # unclassified rows all matching "X DETAILS FOR Y" / "X DETAIL FOR Y"
+    # structural pattern. Conservative coverage: specific 2/3-grams
+    # only, no bare ("DETAILS",) 1-gram (would catch documents).
+    "DDT": (
+        ("DETAILS", "FOR"),
+        ("DETAIL", "FOR"),
+        ("FOUNDATION", "DETAILS"),
+        ("FOUNDATION", "DETAIL"),
+        ("STRUCTURAL", "DETAILS"),
+        ("STRUCTURAL", "DETAIL"),
+        ("MODIFICATION", "DETAILS"),
+        ("NOZZLES", "DETAILS"),
+        ("BRACKET", "DETAILS"),
+        ("CLEATS", "DETAILS"),
+        ("HANDRAIL", "DETAILS"),
+    ),
+    # Generic construction drawings - "CONSTRUCTION DRAWING (TYP)..." titles.
+    "DWG": (
+        ("CONSTRUCTION", "DRAWING"),
+    ),
     "DPP": (
         ("PLOT", "PLAN"),
     ),
