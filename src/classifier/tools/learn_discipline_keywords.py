@@ -32,6 +32,7 @@ from classifier.core.type_scoring import (
 from classifier.io.normalize import is_empty
 
 CSV_ROOT = Path("input/classified_csv")
+DISCIPLINES_TABLE_CSV = Path("input/disciplines.csv")
 OUT_PATH = Path("src/classifier/config/discipline_keywords.py")
 
 MIN_CLASS_DOCS: int = 4
@@ -54,9 +55,44 @@ def _parse_discipline(raw: str) -> int | None:
         return None
 
 
-def _collect_rows() -> list[tuple[int, str, Path]]:
-    """Yield ``(discipline_id, title, source_path)`` for every eligible row."""
+def _load_valid_discipline_ids() -> frozenset[int]:
+    """Load the canonical discipline_id whitelist from the disciplines
+    table export. Training rows whose discipline_id is NOT in this set
+    are treated as orphans (deleted/renamed disciplines) and dropped.
+
+    Without this filter, the learner would emit rules for FK-invalid
+    IDs that the RDS pipeline would then write back into the documents
+    table, corrupting referential integrity.
+    """
+    if not DISCIPLINES_TABLE_CSV.exists():
+        raise SystemExit(
+            f"disciplines table not found at {DISCIPLINES_TABLE_CSV}. "
+            "Export the disciplines table to that path and re-run."
+        )
+    df = pd.read_csv(DISCIPLINES_TABLE_CSV, dtype=str, keep_default_na=False, na_values=[])
+    if "id" not in df.columns:
+        raise SystemExit(f"{DISCIPLINES_TABLE_CSV}: missing required 'id' column")
+    ids: set[int] = set()
+    for raw in df["id"]:
+        if is_empty(raw):
+            continue
+        try:
+            ids.add(int(float(str(raw).strip())))
+        except (TypeError, ValueError):
+            continue
+    return frozenset(ids)
+
+
+def _collect_rows(valid_ids: frozenset[int]
+                  ) -> tuple[list[tuple[int, str, Path]], Counter[int]]:
+    """Yield ``(discipline_id, title, source_path)`` for every eligible row.
+
+    Returns ``(rows, orphan_counts)`` where ``orphan_counts`` is a
+    Counter of discipline_ids seen in the training CSVs that are NOT
+    in the canonical disciplines table.
+    """
     rows: list[tuple[int, str, Path]] = []
+    orphans: Counter[int] = Counter()
     csv_paths = sorted(CSV_ROOT.rglob("*.csv"), key=lambda p: str(p).lower())
     for p in csv_paths:
         df = pd.read_csv(p, dtype=str, keep_default_na=False, na_values=[])
@@ -69,8 +105,11 @@ def _collect_rows() -> list[tuple[int, str, Path]]:
             disc = _parse_discipline(row["discipline_id"])
             if disc is None:
                 continue
+            if disc not in valid_ids:
+                orphans[disc] += 1
+                continue
             rows.append((disc, str(row["title"]), p))
-    return rows
+    return rows, orphans
 
 
 _DIGIT_RE = re.compile(r"\d")
@@ -195,7 +234,8 @@ def render(rules: dict[int, tuple[tuple[str, float], ...]],
 def main() -> None:
     if not CSV_ROOT.exists():
         raise SystemExit(f"csv dir not found: {CSV_ROOT}")
-    rows = _collect_rows()
+    valid_ids = _load_valid_discipline_ids()
+    rows, orphans = _collect_rows(valid_ids)
     if not rows:
         raise SystemExit(f"no eligible (discipline_id, title) rows found under {CSV_ROOT}")
     rules, class_counts, untrained = learn(rows)
@@ -203,9 +243,14 @@ def main() -> None:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(text, encoding="utf-8", newline="\n")
     print(f"Wrote {OUT_PATH}")
-    print(f"  training rows:    {len(rows)}")
-    print(f"  disciplines eligible: {len(rules)}")
+    print(f"  whitelist size:        {len(valid_ids)} disciplines from {DISCIPLINES_TABLE_CSV}")
+    print(f"  training rows kept:    {len(rows)}")
+    print(f"  disciplines eligible:  {len(rules)}")
     print(f"  disciplines untrained: {len(untrained)}")
+    if orphans:
+        orphan_summary = ", ".join(f"{d} ({n})" for d, n in orphans.most_common())
+        print(f"  orphan IDs dropped (not in disciplines table):")
+        print(f"    {orphan_summary}")
     for d in sorted(rules)[:3]:
         sample = ", ".join(f"{p!r}" for p, _ in rules[d][:3])
         print(f"    discipline_id={d}: {sample}")
