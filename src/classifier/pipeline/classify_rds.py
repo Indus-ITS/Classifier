@@ -20,7 +20,14 @@ log = logging.getLogger("classifier.rds")
 
 TYPE_KEYWORDS_PATH = Path("src/classifier/config/type_keywords.py")
 DISCIPLINE_KEYWORDS_PATH = Path("src/classifier/config/discipline_keywords.py")
+TYPE_TO_DISCIPLINE_PATH = Path("src/classifier/config/type_to_discipline.py")
 CLASSIFIED_CSV_DIR = Path("input/classified_csv")
+
+_GENERATED_CONFIGS: tuple[tuple[Path, str], ...] = (
+    (TYPE_KEYWORDS_PATH,       "learn-type-keywords"),
+    (DISCIPLINE_KEYWORDS_PATH, "learn-discipline-keywords"),
+    (TYPE_TO_DISCIPLINE_PATH,  "learn-type-discipline"),
+)
 
 
 def _stale_rule_warnings() -> list[str]:
@@ -32,10 +39,9 @@ def _stale_rule_warnings() -> list[str]:
     if not csv_mtimes:
         return warnings
     newest_csv = max(csv_mtimes)
-    if TYPE_KEYWORDS_PATH.exists() and newest_csv > TYPE_KEYWORDS_PATH.stat().st_mtime:
-        warnings.append("type_keywords.py is older than training data; run learn-type-keywords")
-    if DISCIPLINE_KEYWORDS_PATH.exists() and newest_csv > DISCIPLINE_KEYWORDS_PATH.stat().st_mtime:
-        warnings.append("discipline_keywords.py is older than training data; run learn-discipline-keywords")
+    for path, tool in _GENERATED_CONFIGS:
+        if path.exists() and newest_csv > path.stat().st_mtime:
+            warnings.append(f"{path.name} is older than training data; run {tool}")
     return warnings
 
 

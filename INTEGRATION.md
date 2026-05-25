@@ -143,7 +143,63 @@ remove the `-binary` and rely on yours.
 
 ---
 
-## How to call it
+## Vendoring checklist (paste-friendly)
+
+For a vendored install (the recommended path), copy these into your
+consumer repo and tick the boxes as you go:
+
+```
+[ ] src/classifier/                     -> <consumer>/src/classifier/
+[ ] input/classified_csv/               -> <consumer>/input/classified_csv/
+[ ] input/disciplines.csv               -> <consumer>/input/disciplines.csv
+[ ] input/discipline_fold.csv           -> <consumer>/input/discipline_fold.csv
+[ ] INTEGRATION.md                      -> <consumer>/docs/CLASSIFIER_INTEGRATION.md
+[ ] Add `psycopg2-binary>=2.9` to consumer pyproject.toml (or vendor's psycopg2)
+[ ] Add `pandas>=2.0` if consumer doesn't already pin it (needed by the learners only)
+[ ] Run from consumer repo root: `python -c "from classifier.pipeline.classify_rds import classify_from_rds"`
+[ ] (If retraining locally) `pip install -e .` and run the three learners
+```
+
+The classifier reads paths **relative to the current working directory**
+(e.g. `input/classified_csv/`, `src/classifier/config/type_keywords.py`).
+Run your consumer code from a directory where those resolve. If your
+repo has a different layout, the cleanest fix is symlinking
+`input/classified_csv/`, `input/disciplines.csv`, and
+`input/discipline_fold.csv` to wherever they actually live in your
+repo. The only paths the **runtime** reads are the generated configs
+under `src/classifier/config/` — those are always Python imports, so
+they don't depend on cwd.
+
+## Two public entry points
+
+### A. RDS pipeline — `classify_from_rds(conn)`
+
+Streams rows from a PostgreSQL `documents` table and updates them
+in place. The original use case.
+
+### B. Pure in-process — `classify_titles(rows)`
+
+Classifies a list of dicts already in memory. No DB. Use this when
+rows arrive via webhook, queue, file upload, etc.
+
+```python
+from classifier.pipeline.classify_titles import classify_titles
+
+results = classify_titles([
+    {"title": "EQUIPMENT REQUISITION"},
+    {"title": "P&ID AREA 01", "doc_type": "drawing"},   # existing fields preserved
+])
+# [
+#   {"doc_type": "document", "type": "REQ", "discipline_id": None},
+#   {"doc_type": "drawing",  "type": "PID", "discipline_id": None},
+# ]
+```
+
+Add `include_reasons=True` to get `(value, reason_tag)` pairs instead
+of bare values. Same classifier engine as `classify_from_rds`; the RDS
+pipeline is just the same logic wrapped in a psycopg2 read/write loop.
+
+## How to call it (RDS path)
 
 The public API is one function:
 
@@ -392,3 +448,93 @@ Do NOT:
 
 If you need to re-classify a row, set its `doc_type` / `type` /
 `discipline_id` to NULL first, then call `classify_from_rds(conn)`.
+
+---
+
+## Smoke harness for the consumer repo
+
+After vendoring, drop this into a scratch file (e.g.
+`scripts/smoke_classifier.py`) in the consumer repo and run it. It
+exercises both the pure API and the RDS path, and reports anything
+that's wired wrong before you depend on the classifier in real code.
+
+```python
+"""Smoke-test the vendored classifier integration."""
+import os
+import sys
+
+
+def step(msg: str) -> None:
+    print(f"-- {msg}")
+
+
+def smoke_imports() -> None:
+    step("imports")
+    from classifier.pipeline.classify_titles import classify_titles  # noqa: F401
+    from classifier.pipeline.classify_rds import classify_from_rds  # noqa: F401
+    from classifier.io.rds import iter_unclassified, update_row     # noqa: F401
+    print("   ok")
+
+
+def smoke_titles() -> None:
+    step("classify_titles (pure, no DB)")
+    from classifier.pipeline.classify_titles import classify_titles
+    rows = [
+        {"title": "EQUIPMENT REQUISITION"},
+        {"title": "P&ID AREA 01"},
+        {"title": "FOUNDATION LAYOUT"},
+        {"title": "", "doc_type": "drawing", "type": "DWG", "discipline_id": 7},
+    ]
+    out = classify_titles(rows)
+    for inp, res in zip(rows, out):
+        print(f"   {inp.get('title','(empty)'):<32}  ->  {res}")
+
+
+def smoke_rds() -> None:
+    step("classify_from_rds (DB, dry: just check selection)")
+    required = ["PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD"]
+    missing = [v for v in required if v not in os.environ]
+    if missing:
+        print(f"   skipped (missing env vars: {missing})")
+        return
+    import psycopg2
+    from classifier.io.rds import iter_unclassified
+    conn = psycopg2.connect(
+        host=os.environ["PGHOST"],
+        dbname=os.environ["PGDATABASE"],
+        user=os.environ["PGUSER"],
+        password=os.environ["PGPASSWORD"],
+        port=os.environ.get("PGPORT", "5432"),
+    )
+    try:
+        n = 0
+        for row in iter_unclassified(conn, table="documents", pk="document_id", fetch_size=200):
+            n += 1
+            if n <= 3:
+                print(f"   row {n}: {row}")
+            if n >= 3:
+                break
+        print(f"   selection works; first {min(n,3)} unclassified row(s) shown")
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    try:
+        smoke_imports()
+        smoke_titles()
+        smoke_rds()
+        print("\nOK")
+    except Exception as e:
+        print(f"\nFAILED: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(1)
+```
+
+Run it: `python scripts/smoke_classifier.py`. With no PG env vars set,
+the RDS step is skipped and only the pure API is exercised. With env
+vars set, it confirms the SELECT query streams rows from your real
+table — without writing anything (the script never calls
+`classify_from_rds` or `update_row`).
+
+Once this passes, wire `classify_from_rds(conn)` into your actual
+pipeline code and you're done.
