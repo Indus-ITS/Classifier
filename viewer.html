@@ -122,6 +122,12 @@ const DISCIPLINES = [
   { id: 36, name: 'Mechanical Static',      code: 'STC',  dest: false, foldsTo: 7    },
   { id: 37, name: 'Telecom',                code: 'TEL',  dest: false, foldsTo: 3    },
   { id: 39, name: 'HVAC',                   code: 'HVAC', dest: false, foldsTo: 7    },
+  // Provisional entries inferred from labelled-CSV title patterns (no DEST table row).
+  { id: 17, name: 'Process Studies',        code: 'PST',  dest: false, foldsTo: 11   },
+  { id: 20, name: 'Rotating Equipment',     code: 'ROE',  dest: false, foldsTo: 7    },
+  { id: 23, name: 'Engineering Deliverables', code: 'EDL', dest: false, foldsTo: 4   },
+  { id: 25, name: 'Fire & Safety',          code: 'FAS',  dest: false, foldsTo: 11   },
+  { id: 26, name: 'Planning & Scheduling',  code: 'PLS',  dest: false, foldsTo: 4    },
 ];
 const DISC_LABEL = id => {
   if (id === '' || id === null || id === undefined) return '';

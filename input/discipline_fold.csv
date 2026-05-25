@@ -16,3 +16,8 @@ client_id,dest_id,note
 36,7,Mechanical Static -> Mechanical
 37,3,Telecom -> Electrical
 39,7,HVAC -> Mechanical
+17,11,"Process Studies -> Process (provisional; inferred from P&ID/corrosion/process-report titles)"
+20,7,"Rotating Equipment -> Mechanical (provisional; inferred from pump datasheet/requisition titles)"
+23,4,"Engineering Deliverables -> EMT (provisional; inferred from deliverables-list/design-basis titles)"
+25,11,"Fire & Safety -> Process (provisional; inferred from F&G/fire-fighting layout titles)"
+26,4,"Planning & Scheduling -> EMT (provisional; inferred from execution-plan/scheduling titles)"

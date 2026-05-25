@@ -16,3 +16,8 @@
 36,"Mechanical Static",NULL,"STC","Static"
 37,"Telecom",NULL,"TEL","Telecom"
 39,"HVAC",NULL,"HVAC","Heating, Ventilation & Air Conditioning"
+17,"Process Studies",NULL,"PST","Process Studies / Engineering Studies (provisional - inferred from training titles)"
+20,"Rotating Equipment",NULL,"ROE","Rotating Equipment / Pumps (provisional - inferred from training titles)"
+23,"Engineering Deliverables",NULL,"EDL","Engineering Deliverables / Templates / Design Basis (provisional - inferred from training titles)"
+25,"Fire & Safety",NULL,"FAS","Fire & Safety / F&G (provisional - inferred from training titles)"
+26,"Planning & Scheduling",NULL,"PLS","Planning & Scheduling / Project Execution (provisional - inferred from training titles)"
