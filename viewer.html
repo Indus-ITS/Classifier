@@ -112,6 +112,9 @@ const DISCIPLINES = [
   { id: 5,  name: 'HSE',                    code: 'HSE',  dest: false, foldsTo: 11   },
   { id: 6,  name: 'I&C',                    code: 'INC',  dest: true                 },
   { id: 7,  name: 'Mechanical',             code: 'MEC',  dest: true                 },
+  // NB: client labelled-CSVs use #7 for I&C content; the fold layer rewrites
+  // 7 -> 6 at training time, so anything visible as discipline_id=7 here is
+  // either preserved client-namespace data OR a newly-inferred DEST id.
   { id: 8,  name: 'Piping',                 code: 'PIP',  dest: true                 },
   { id: 9,  name: 'Package',                code: 'PKG',  dest: false, foldsTo: 11   },
   { id: 10, name: 'Project Management',     code: 'PRJ',  dest: false, foldsTo: 4    },
