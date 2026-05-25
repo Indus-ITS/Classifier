@@ -112,7 +112,7 @@ const DISCIPLINES = [
 const DISC_LABEL = id => {
   if (id === '' || id === null || id === undefined) return '';
   const d = DISCIPLINES.find(x => String(x.id) === String(id));
-  return d ? `${id} (${d.code})` : String(id);
+  return d ? d.name : `#${id}`;  // unknown ids shown as #N so it's obvious they're not DEST
 };
 
 // Columns visible by default. Order matches what's useful for review.
@@ -369,9 +369,9 @@ function openEditor(td, rowIdx, col) {
     editor = document.createElement('select');
     editor.className = 'inline-edit';
     editor.append(new Option('(empty)', ''));
-    DISCIPLINES.forEach(d => editor.append(new Option(`${d.id} ${d.code} - ${d.name}`, String(d.id))));
+    DISCIPLINES.forEach(d => editor.append(new Option(`${d.name} (${d.code})`, String(d.id))));
     if (cur && !DISCIPLINES.find(d => String(d.id) === String(cur))) {
-      editor.append(new Option(`${cur} (not in DEST)`, String(cur)));
+      editor.append(new Option(`#${cur} (not in DEST)`, String(cur)));
     }
     editor.value = String(cur ?? '');
   } else {
