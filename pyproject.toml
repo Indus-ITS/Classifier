@@ -13,7 +13,8 @@ dependencies = [
 classify            = "classifier.cli.classify:main"
 convert-classified  = "classifier.tools.convert_classified:main"
 build-type-enum     = "classifier.tools.build_type_enum:main"
-learn-type-keywords = "classifier.tools.learn_type_keywords:main"
+learn-type-keywords       = "classifier.tools.learn_type_keywords:main"
+learn-discipline-keywords = "classifier.tools.learn_discipline_keywords:main"
 
 [build-system]
 requires = ["setuptools>=61"]
