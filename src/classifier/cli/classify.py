@@ -29,63 +29,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from classifier.config.buckets import BUCKET_TO_CLASS, TYPE_TO_BUCKET
-from classifier.core.type_scoring import (
-    pick_type, pick_type_with_overrides, score_types,
-)
 from classifier.io.normalize import is_empty
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
+from classifier.pipeline._row import fill_type, normalize_doc_type
 
 INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
 CLASSIFIED_CSV_DIR = Path("input/classified_csv")
 TYPE_KEYWORDS_PATH = Path("src/classifier/config/type_keywords.py")
-
-DRAWING_ALIASES = {"drawing", "drawings", "dwg"}
-DOCUMENT_ALIASES = {"document", "documents", "doc", "docs"}
-
-
-def _normalize_doc_type(value: str, title: str) -> tuple[str, str]:
-    """Return ``(normalized, reason)``. reason: existing / via_keyword / defaulted.
-
-    Path:
-      1. Existing value normalizes to drawing/document via the aliases.
-      2. Else: pick_type(title); if confidence=='high', fold via
-         TYPE_TO_BUCKET + BUCKET_TO_CLASS to drawing/document.
-      3. Else: default to 'document' (intentional business bias - drawings
-         carry higher operational risk so unknown rows go to document).
-    """
-    if not is_empty(value):
-        v = str(value).strip().lower()
-        if v in DRAWING_ALIASES:
-            return "drawing", "existing"
-        if v in DOCUMENT_ALIASES:
-            return "document", "existing"
-    pick = pick_type_with_overrides(title)
-    if pick["confidence"] == "high":
-        bucket = TYPE_TO_BUCKET.get(pick["type"])
-        if bucket is not None:
-            folded = BUCKET_TO_CLASS[bucket]
-            reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
-            return ("drawing" if folded == "Drawings" else "document"), reason_tag
-    return "document", "defaulted"
-
-
-def _fill_type(row_type: str, title: str) -> tuple[str, str]:
-    """Return ``(value, reason)``. reason: preserved / via_keyword / empty.
-
-    Title-only. Tiers (first non-empty wins):
-      1. existing value (preserved).
-      2. ``pick_type(title)`` with confidence == 'high' -> picked type.
-      3. Miss -> empty.
-    """
-    if not is_empty(row_type):
-        return str(row_type).strip(), "preserved"
-    pick = pick_type_with_overrides(title)
-    if pick["confidence"] == "high":
-        reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
-        return pick["type"], reason_tag
-    return "", "empty"
 
 
 def main() -> None:
@@ -119,12 +70,12 @@ def main() -> None:
             before = out["doc_type"].strip().lower() if not is_empty(out["doc_type"]) else ""
             doc_type_before[before or "(empty)"] += 1
 
-            new_doc_type, dt_reason = _normalize_doc_type(out["doc_type"], out["title"])
+            new_doc_type, dt_reason = normalize_doc_type(out["doc_type"], out["title"])
             out["doc_type"] = new_doc_type
             doc_type_after[new_doc_type] += 1
             doc_type_reason[dt_reason] += 1
 
-            new_type, t_reason = _fill_type(out["type"], out["title"])
+            new_type, t_reason = fill_type(out["type"], out["title"])
             out["type"] = new_type
             type_reason[t_reason] += 1
 
@@ -140,7 +91,7 @@ def main() -> None:
     print(f"  reasons: {dict(doc_type_reason)}")
     print()
     print("type fill outcomes:")
-    for k in ("preserved", "via_override", "via_keyword", "empty"):
+    for k in ("preserved", "via_override", "via_keyword", "miss"):
         print(f"  {k:14s} {type_reason.get(k, 0):>6}")
 
 
