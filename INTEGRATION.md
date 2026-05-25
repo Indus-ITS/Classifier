@@ -39,6 +39,26 @@ pyproject.toml              ← package metadata (or merge entries into yours)
 INTEGRATION.md              ← this file
 ```
 
+### How discipline classification works
+
+The pipeline classifies each row in **two stages**, and the first stage
+feeds the second:
+
+1. **Type classification** runs first on the title alone, picking a
+   3-letter type code (e.g. `ISO`, `PFD`, `REQ`).
+2. **Discipline classification** then runs on the title PLUS the picked
+   type. Title keywords score per DEST discipline as before; the type
+   adds a fixed boost to the discipline it maps to (see
+   `src/classifier/config/type_to_discipline.py`, learned from labelled
+   data). The boost is calibrated so the type alone cannot fire a
+   classification — it only nudges a weak keyword signal into a
+   confident decision.
+
+This means improving type classification automatically improves
+discipline classification, and types like ISO (Piping) or PFD (Process)
+that strongly imply a discipline are leveraged without hand-coding the
+implication.
+
 ### How the discipline pipeline folds client → DEST
 
 The labelled CSVs in `input/classified_csv/` use the **client's**
@@ -62,10 +82,16 @@ to `input/discipline_fold.csv` to bring them back.
   discipline you want to absorb, or you decide a different mapping.
 - `input/classified_csv/` — append new labelled rows here.
 
-After any of those change, re-run `learn-discipline-keywords` to
-regenerate `src/classifier/config/discipline_keywords.py`. The pipeline
-logs a WARNING at startup if it detects training data newer than the
-generated rules.
+After any of those change, re-run both learners to regenerate the
+keyword and type-hint configs:
+
+```bash
+learn-discipline-keywords   # title-keyword rules per DEST discipline
+learn-type-discipline       # type-code -> DEST discipline majority map
+```
+
+The pipeline logs a WARNING at startup if it detects training data
+newer than the generated rules.
 
 That's it. The `classifier` package is self-contained.
 

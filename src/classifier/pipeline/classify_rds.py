@@ -92,7 +92,10 @@ def classify_from_rds(
 
             new_doc_type, dt_reason = normalize_doc_type(cur_doc_type_s, title_s)
             new_type,     t_reason  = fill_type(cur_type_s, title_s)
-            new_disc,     d_reason  = fill_discipline(cur_disc_s, title_s)
+            # Use the effective type (whether existing or just inferred) as
+            # the discipline scorer's hint -- types carry strong discipline
+            # signal (e.g. ISO -> Piping, PFD -> Process).
+            new_disc,     d_reason  = fill_discipline(cur_disc_s, title_s, type_hint=new_type)
 
             stats["doc_type"][dt_reason]      += 1
             stats["type"][t_reason]           += 1
