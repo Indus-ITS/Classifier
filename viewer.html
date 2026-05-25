@@ -99,20 +99,34 @@ const KNOWN_TYPES = [
   'SOW','SPC','STD','TBE',
 ];
 
-// DEST disciplines from input/disciplines.csv
+// All disciplines from input/disciplines.csv.
+// `dest:true` flags one of DEST's 7 internal buckets; the rest are client
+// taxonomy entries that fold into a DEST bucket (foldsTo). The edit
+// dropdown lists all of them so corrections can use the most specific
+// label; the actual fold/training step happens in the Python side.
 const DISCIPLINES = [
-  { id: 1,  name: 'Civil',       code: 'CIV' },
-  { id: 3,  name: 'Electrical',  code: 'ELE' },
-  { id: 4,  name: 'EMT',         code: 'EMT' },
-  { id: 6,  name: 'I&C',         code: 'INC' },
-  { id: 7,  name: 'Mechanical',  code: 'MEC' },
-  { id: 8,  name: 'Piping',      code: 'PIP' },
-  { id: 11, name: 'Process',     code: 'PRO' },
+  { id: 1,  name: 'Civil',                  code: 'CIV',  dest: true                 },
+  { id: 2,  name: 'Construction Management', code: 'CRM', dest: false, foldsTo: 4    },
+  { id: 3,  name: 'Electrical',             code: 'ELE',  dest: true                 },
+  { id: 4,  name: 'EMT',                    code: 'EMT',  dest: true                 },
+  { id: 5,  name: 'HSE',                    code: 'HSE',  dest: false, foldsTo: 11   },
+  { id: 6,  name: 'I&C',                    code: 'INC',  dest: true                 },
+  { id: 7,  name: 'Mechanical',             code: 'MEC',  dest: true                 },
+  { id: 8,  name: 'Piping',                 code: 'PIP',  dest: true                 },
+  { id: 9,  name: 'Package',                code: 'PKG',  dest: false, foldsTo: 11   },
+  { id: 10, name: 'Project Management',     code: 'PRJ',  dest: false, foldsTo: 4    },
+  { id: 11, name: 'Process',                code: 'PRO',  dest: true                 },
+  { id: 12, name: 'Procurement',            code: 'PRP',  dest: false, foldsTo: 4    },
+  { id: 13, name: 'QA/QC',                  code: 'QAC',  dest: false, foldsTo: 4    },
+  { id: 14, name: 'Mechanical Rotary',      code: 'RO',   dest: false, foldsTo: 7    },
+  { id: 36, name: 'Mechanical Static',      code: 'STC',  dest: false, foldsTo: 7    },
+  { id: 37, name: 'Telecom',                code: 'TEL',  dest: false, foldsTo: 3    },
+  { id: 39, name: 'HVAC',                   code: 'HVAC', dest: false, foldsTo: 7    },
 ];
 const DISC_LABEL = id => {
   if (id === '' || id === null || id === undefined) return '';
   const d = DISCIPLINES.find(x => String(x.id) === String(id));
-  return d ? d.name : `#${id}`;  // unknown ids shown as #N so it's obvious they're not DEST
+  return d ? d.name : `#${id}`;  // truly unknown ids (orphans 17/20/23/25/26) shown as #N
 };
 
 // Columns visible by default. Order matches what's useful for review.
@@ -369,9 +383,16 @@ function openEditor(td, rowIdx, col) {
     editor = document.createElement('select');
     editor.className = 'inline-edit';
     editor.append(new Option('(empty)', ''));
-    DISCIPLINES.forEach(d => editor.append(new Option(`${d.name} (${d.code})`, String(d.id))));
+    // DEST buckets first, then the client disciplines that fold into them.
+    const dest = DISCIPLINES.filter(d => d.dest);
+    const folded = DISCIPLINES.filter(d => !d.dest);
+    dest.forEach(d => editor.append(new Option(`${d.name} (${d.code}) - DEST`, String(d.id))));
+    folded.forEach(d => {
+      const target = DISCIPLINES.find(x => x.id === d.foldsTo);
+      editor.append(new Option(`${d.name} (${d.code}) -> ${target ? target.name : '?'}`, String(d.id)));
+    });
     if (cur && !DISCIPLINES.find(d => String(d.id) === String(cur))) {
-      editor.append(new Option(`#${cur} (not in DEST)`, String(cur)));
+      editor.append(new Option(`#${cur} (orphan, no known mapping)`, String(cur)));
     }
     editor.value = String(cur ?? '');
   } else {
