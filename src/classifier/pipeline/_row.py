@@ -10,6 +10,7 @@ Each function takes ``(existing_value, title)`` and returns
 from __future__ import annotations
 
 from classifier.config.buckets import BUCKET_TO_CLASS, TYPE_TO_BUCKET
+from classifier.core.discipline_scoring import pick_discipline_with_overrides
 from classifier.core.type_scoring import pick_type_with_overrides
 from classifier.io.normalize import is_empty
 
@@ -44,9 +45,6 @@ def fill_type(row_type: str, title: str) -> tuple[str, str]:
         reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
         return pick["type"], reason_tag
     return "", "miss"
-
-
-from classifier.core.discipline_scoring import pick_discipline_with_overrides
 
 
 def fill_discipline(row_disc: str, title: str) -> tuple[str, str]:

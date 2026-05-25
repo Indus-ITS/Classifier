@@ -46,7 +46,10 @@ def iter_unclassified(conn, table: str, pk: str, fetch_size: int
         pk=sql.Identifier(pk),
         tbl=sql.Identifier(table),
     )
-    cur = conn.cursor(name="classify_cur")
+    # Unique cursor name so re-entry on the same connection (e.g. a
+    # caller running classify_from_rds twice without closing conn)
+    # cannot collide with a still-open server-side cursor.
+    cur = conn.cursor(name=f"classify_cur_{id(conn)}")
     try:
         cur.itersize = fetch_size
         cur.execute(select_q)
