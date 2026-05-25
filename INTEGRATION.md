@@ -33,9 +33,18 @@ repo root):
 ```
 src/classifier/             ← the whole package
 input/classified_csv/       ← labelled training data (used by learn-* tools)
+input/disciplines.csv       ← canonical disciplines table export (FK whitelist)
 pyproject.toml              ← package metadata (or merge entries into yours)
 INTEGRATION.md              ← this file
 ```
+
+**Keep `input/disciplines.csv` in sync with your real disciplines
+table.** When you add, rename, or delete a discipline in the database,
+re-export the table to that path and run `learn-discipline-keywords`.
+The learner uses it as a whitelist — discipline_ids in the labelled
+training data that are not in this CSV are dropped as orphans, and
+will never be written back into `documents.discipline_id`. This is
+what keeps the pipeline from violating the FK constraint.
 
 That's it. The `classifier` package is self-contained.
 
@@ -265,6 +274,13 @@ learn-discipline-keywords    # mines (title, discipline_id) pairs
 Re-run them whenever you add new labelled rows to
 `input/classified_csv/`. The pipeline logs a WARNING at startup if the
 generated files are older than the labelled CSVs.
+
+**Re-export `input/disciplines.csv`** any time you add, rename, or
+delete a discipline in the database, then re-run
+`learn-discipline-keywords`. The learner uses that CSV as a whitelist —
+any discipline_id in the training data that isn't in this CSV is
+treated as an orphan and dropped. This prevents the pipeline from
+writing FK-invalid discipline_ids back into the documents table.
 
 ### Adding a new type override
 
