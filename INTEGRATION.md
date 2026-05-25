@@ -32,19 +32,40 @@ repo root):
 
 ```
 src/classifier/             ← the whole package
-input/classified_csv/       ← labelled training data (used by learn-* tools)
-input/disciplines.csv       ← canonical disciplines table export (FK whitelist)
+input/classified_csv/       ← labelled training data (client taxonomy)
+input/disciplines.csv       ← DEST disciplines table export (FK target)
+input/discipline_fold.csv   ← client_id → dest_id mapping
 pyproject.toml              ← package metadata (or merge entries into yours)
 INTEGRATION.md              ← this file
 ```
 
-**Keep `input/disciplines.csv` in sync with your real disciplines
-table.** When you add, rename, or delete a discipline in the database,
-re-export the table to that path and run `learn-discipline-keywords`.
-The learner uses it as a whitelist — discipline_ids in the labelled
-training data that are not in this CSV are dropped as orphans, and
-will never be written back into `documents.discipline_id`. This is
-what keeps the pipeline from violating the FK constraint.
+### How the discipline pipeline folds client → DEST
+
+The labelled CSVs in `input/classified_csv/` use the **client's**
+discipline taxonomy. DEST has 7 internal disciplines (Civil, Electrical,
+EMT, I&C, Mechanical, Piping, Process) that the client taxonomy folds
+into via `input/discipline_fold.csv`.
+
+The learner reads each labelled `(client_discipline_id, title)` pair,
+looks the client_id up in the fold, and trains rules under the
+**DEST** id. The RDS pipeline therefore writes DEST ids directly into
+`documents.discipline_id`, which is FK-safe (every dest_id in the fold
+is validated against `input/disciplines.csv` at learn time).
+
+Client ids that have no fold entry are dropped as orphans. Add a row
+to `input/discipline_fold.csv` to bring them back.
+
+**Three files to keep in sync:**
+- `input/disciplines.csv` — re-export when DEST adds/renames/deletes a
+  discipline.
+- `input/discipline_fold.csv` — edit when the client adds a new
+  discipline you want to absorb, or you decide a different mapping.
+- `input/classified_csv/` — append new labelled rows here.
+
+After any of those change, re-run `learn-discipline-keywords` to
+regenerate `src/classifier/config/discipline_keywords.py`. The pipeline
+logs a WARNING at startup if it detects training data newer than the
+generated rules.
 
 That's it. The `classifier` package is self-contained.
 
@@ -276,11 +297,16 @@ Re-run them whenever you add new labelled rows to
 generated files are older than the labelled CSVs.
 
 **Re-export `input/disciplines.csv`** any time you add, rename, or
-delete a discipline in the database, then re-run
-`learn-discipline-keywords`. The learner uses that CSV as a whitelist —
-any discipline_id in the training data that isn't in this CSV is
-treated as an orphan and dropped. This prevents the pipeline from
-writing FK-invalid discipline_ids back into the documents table.
+delete a DEST discipline. The fold table's `dest_id` column is
+validated against this CSV at learn time — if a dest_id in the fold
+isn't in the disciplines table, `learn-discipline-keywords` aborts
+with a clear error rather than silently writing FK-invalid values.
+
+**Edit `input/discipline_fold.csv`** when the client adds a new
+discipline you want to absorb, or when you decide a different mapping
+(e.g. client's "Instrumentation" should fold to DEST's I&C instead of
+Mechanical). Columns: `client_id, dest_id, note`. Client ids with no
+row in this file are dropped from training as orphans.
 
 ### Adding a new type override
 

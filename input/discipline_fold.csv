@@ -1,0 +1,18 @@
+client_id,dest_id,note
+1,1,Civil -> Civil (identity)
+2,4,Construction Management -> EMT (project/commercial bucket)
+3,3,Electrical -> Electrical (identity)
+4,4,Engineering Management -> EMT (identity)
+5,11,HSE -> Process
+6,6,I&C -> I&C (identity)
+7,7,Mechanical -> Mechanical (identity)
+8,8,Piping -> Piping (identity)
+9,11,Package -> Process
+10,4,Project Management -> EMT
+11,11,Process -> Process (identity)
+12,4,Procurement -> EMT (commercial)
+13,4,QA/QC -> EMT (cross-cutting/commercial)
+14,7,Mechanical Rotary -> Mechanical
+36,7,Mechanical Static -> Mechanical
+37,3,Telecom -> Electrical
+39,7,HVAC -> Mechanical
