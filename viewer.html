@@ -24,13 +24,13 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .filters .clear { color: #6b7280; cursor: pointer; font-size: 11px; }
 .filters .clear:hover { color: #1f2937; }
 .table-wrap { overflow: auto; height: calc(100vh - 120px); background: white; }
-table { border-collapse: collapse; width: max-content; min-width: 100%; }
-thead th { position: sticky; top: 0; background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11px; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; z-index: 1; white-space: nowrap; }
-tbody td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; font-size: 12px; }
-tbody tr:hover { background: #f9fafb; }
+table { border-collapse: collapse; table-layout: fixed; width: max-content; min-width: 100%; }
+thead th { position: sticky; top: 0; background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; font-weight: 600; font-size: 11px; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tbody td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; font-size: 12px; word-wrap: break-word; overflow-wrap: break-word; }
+tbody tr:nth-child(even) { background: #fafafa; }
 tbody tr.modified { background: #fef9c3; }
+tbody tr:hover { background: #eef2ff; }
 tbody tr.modified:hover { background: #fef08a; }
-td.title-cell { max-width: 380px; min-width: 240px; word-wrap: break-word; }
 td.id-cell { color: #6b7280; font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
 td.editable { cursor: pointer; }
 td.editable:hover { background: #e0e7ff; }
@@ -118,6 +118,16 @@ const DISC_LABEL = id => {
 // Columns visible by default. Order matches what's useful for review.
 const DEFAULT_COLS = ['document_id', 'title', 'doc_type', 'type'];
 const EDITABLE_COLS = new Set(['doc_type', 'type', 'discipline_id']);
+const COL_WIDTHS = {  // px; missing cols fall back to DEFAULT_COL_WIDTH
+  document_id: 70, document_no: 180, doc_type: 90, type: 70, discipline_id: 130,
+  title: 400, category: 110, rev: 60, status: 80, description: 240,
+  date_modified: 130, modified_by: 110, reference_link: 160,
+  volume: 70, book: 70, customer_ref: 140, doc_source: 110,
+  entity_id: 80, parent_discipline_id: 90, entity_source: 110,
+  hash: 200, metadata: 280, extracted_at: 150, extractor_version: 120,
+  last_updated_at: 150, updated_by: 110, rfp_id: 70, toc_json: 200,
+};
+const DEFAULT_COL_WIDTH = 140;
 
 // -------- State --------
 let HEADERS = [];      // column names from CSV
@@ -408,6 +418,7 @@ function render() {
   VISIBLE_COLS.forEach(h => {
     const th = document.createElement('th');
     th.textContent = h;
+    th.style.width = (COL_WIDTHS[h] || DEFAULT_COL_WIDTH) + 'px';
     theadRow.append(th);
   });
 
