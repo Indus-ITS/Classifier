@@ -24,8 +24,10 @@ input's 28-column schema, column order, and row count.
 | Command              | What it does |
 |----------------------|--------------|
 | `classify`           | Read `input/To be classified/document.csv`, fill `doc_type` (normalized to `drawing`/`document`) and `type` (filled only when empty, via the lookup built from `input/classified_csv/`), write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
+| `classify-rds`       | Same classifier logic against a PostgreSQL RDS `documents` table. Selects rows where any of `doc_type` / `type` / `discipline_id` is NULL/empty, fills them from the row `title`, UPDATEs in place. Reads DSN from `PGHOST` / `PGDATABASE` / `PGUSER` / `PGPASSWORD` / `PGPORT` env vars. See [Pipeline use](#pipeline-use-rds) for the in-process API. |
 | `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
 | `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
+| `learn-discipline-keywords` | Re-scan `input/classified_csv/` for `(title, discipline_id)` pairs and regenerate `src/classifier/config/discipline_keywords.py`. Mirrors `learn-type-keywords`. |
 
 ## Layout
 
@@ -37,8 +39,8 @@ classifier/
 ├── src/classifier/                   # the package
 │   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
 │   ├── core/                         # pure logic (scoring, extraction, normalisation, ...)
-│   ├── pipeline/                     # orchestration (enrich, audit)
-│   ├── io/                           # file readers/writers (csv)
+│   ├── pipeline/                     # orchestration (enrich, audit, classify_from_rds)
+│   ├── io/                           # readers/writers (csv, rds)
 │   ├── cli/                          # console entry points + presentation helpers
 │   └── tools/                        # offline diagnostic commands (convert-classified, build-type-enum)
 │
@@ -50,6 +52,41 @@ classifier/
 └── output/
     └── classified.csv                # ← MAIN classifier output
 ```
+
+<a id="pipeline-use-rds"></a>
+## Pipeline use (RDS)
+
+The classifier exposes a callable function for embedding in another
+Python pipeline that already owns a psycopg2 connection:
+
+```python
+import psycopg2
+from classifier.pipeline.classify_rds import classify_from_rds
+
+with psycopg2.connect(dsn) as conn:
+    stats = classify_from_rds(
+        conn,
+        table="documents",
+        pk="document_id",
+        commit_every=500,
+        fetch_size=1000,
+        on_done=lambda s: print(s),  # optional, exception-isolated
+    )
+```
+
+`classify_from_rds` streams unclassified rows via a server-side cursor,
+classifies `doc_type`, `type`, and `discipline_id` from each row's
+`title`, and UPDATEs only the fields that were NULL/empty. The caller
+owns the connection lifecycle; the function commits every
+`commit_every` *processed* rows and a final commit before returning.
+Returns a stats dict (see [spec](docs/superpowers/specs/2026-05-25-rds-pipeline-design.md)).
+
+The RDS write boundary uses NULL — never empty string — for missing
+text fields. Empty CSV-style `""` values from existing rows are
+treated as unclassified on read; this pipeline never writes `''` back.
+
+For large tables, add partial indexes on the three filtered columns
+(see §6.5 of the spec).
 
 ## How to iterate on accuracy
 
