@@ -31,7 +31,7 @@ import pandas as pd
 
 from classifier.io.normalize import is_empty
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
-from classifier.pipeline._row import fill_type, normalize_doc_type
+from classifier.pipeline._row import fill_discipline, fill_type, normalize_doc_type
 
 INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
@@ -58,6 +58,7 @@ def main() -> None:
     doc_type_after: Counter[str] = Counter()
     doc_type_reason: Counter[str] = Counter()
     type_reason: Counter[str] = Counter()
+    disc_reason: Counter[str] = Counter()
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_PATH.open("w", newline="", encoding="utf-8") as f:
@@ -79,6 +80,10 @@ def main() -> None:
             out["type"] = new_type
             type_reason[t_reason] += 1
 
+            new_disc, d_reason = fill_discipline(out["discipline_id"], out["title"], type_hint=new_type)
+            out["discipline_id"] = new_disc
+            disc_reason[d_reason] += 1
+
             writer.writerow([out[c] for c in TARGET_COLUMNS])
 
     total = sum(doc_type_after.values())
@@ -93,6 +98,10 @@ def main() -> None:
     print("type fill outcomes:")
     for k in ("preserved", "via_override", "via_keyword", "miss"):
         print(f"  {k:14s} {type_reason.get(k, 0):>6}")
+    print()
+    print("discipline_id fill outcomes:")
+    for k in ("preserved", "via_keyword", "miss"):
+        print(f"  {k:14s} {disc_reason.get(k, 0):>6}")
 
 
 if __name__ == "__main__":
