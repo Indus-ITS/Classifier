@@ -54,6 +54,14 @@ def test_skipped_no_preferred_format():
     assert "16-01-19-2602" in plan.skipped_no_preferred_format
 
 
+def test_unknown_doc_type_routes_unmatched_not_double_counted():
+    index = {"16-01-19-2602": Classification("widget", "x")}
+    plan = _plan(["16-01-19-2602-B.pdf"], index)
+    assert plan.actions[0].bucket == "Unmatched"
+    assert plan.actions[0].doc_type == "widget"
+    assert plan.rows_without_file == ()   # had a file -> not "without file"
+
+
 def test_same_name_different_dirs_merge_into_one_group():
     # Two files with the same name (hence same group_key) merge into one
     # group: one winner, the other becomes a sibling. This is why dest

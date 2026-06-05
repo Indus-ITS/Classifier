@@ -59,3 +59,14 @@ def test_report_rows_and_csv(tmp_path):
         got = list(csv.DictReader(f))
     assert any(r["customer_ref"] == "16-01-19-3000" and r["status"] == "no-file-for-row"
                for r in got)
+
+
+def test_report_class_column_is_lowercase_doctype(tmp_path):
+    src = _make(tmp_path, ["16-01-19-2602-B.pdf"])
+    index = {"16-01-19-2602": Classification("drawing", "P&ID"),
+             "16-01-19-3000": Classification("sheet", "LIST")}  # no file
+    dest = tmp_path / "dest"
+    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest)
+    rows = {r["customer_ref"]: r for r in report_rows(plan, index)}
+    assert rows["16-01-19-2602"]["class"] == "drawing"   # copied row, lowercase
+    assert rows["16-01-19-3000"]["class"] == "sheet"     # no-file row, lowercase

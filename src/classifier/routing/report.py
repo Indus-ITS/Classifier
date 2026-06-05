@@ -23,7 +23,7 @@ def report_rows(plan: Plan, index) -> list[dict]:
         rows.append({
             "customer_ref": a.cust_ref or "",
             "title": a.title,
-            "class": a.bucket,
+            "class": a.doc_type,
             "revision": a.revision or "",
             "chosen_file": a.dest.name,
             "chosen_format": a.chosen_format,

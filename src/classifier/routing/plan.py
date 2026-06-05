@@ -17,6 +17,7 @@ class CopyAction:
     src: Path
     dest: Path
     bucket: str
+    doc_type: str
     cust_ref: str | None
     title: str
     revision: str | None
@@ -54,16 +55,18 @@ def build_plan(groups, index, dest_dir: Path) -> Plan:
             skipped.append(group_key)
             continue
 
+        if cls is not None:
+            matched_refs.add(cust_ref)
         if cls and cls.doc_type in BUCKET_FOR_DOCTYPE:
             bucket = BUCKET_FOR_DOCTYPE[cls.doc_type]
-            matched_refs.add(cust_ref)
         else:
             bucket = UNMATCHED
 
         winner_entry = next(e for e in entries if e.path == group.winner)
         actions.append(CopyAction(
             src=group.winner, dest=dest_dir / bucket / group.winner.name,
-            bucket=bucket, cust_ref=cust_ref, title=(cls.title if cls else ""),
+            bucket=bucket, doc_type=(cls.doc_type if cls else ""),
+            cust_ref=cust_ref, title=(cls.title if cls else ""),
             revision=winner_entry.revision, chosen_format=winner_entry.ext,
             related=group.related,
         ))
