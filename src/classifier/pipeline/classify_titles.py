@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping
 
-from classifier.io.normalize import is_empty
-from classifier.core.record import Record
-from classifier.core.classify import classify_record
+from classifier.io.memory import InMemoryReader, InMemoryWriter
+from classifier.pipeline.run import run
 
 
 def classify_titles(rows: Iterable[Mapping],
@@ -53,23 +52,13 @@ def classify_titles(rows: Iterable[Mapping],
         ``"high"``; otherwise ``""`` / ``None``.
       * Existing populated fields are preserved verbatim.
     """
+    reader = InMemoryReader(rows)
+    writer = InMemoryWriter()
+    run(reader, writer)
+
     out: list[dict] = []
-    for row in rows:
-        title = "" if row.get("title") is None else str(row["title"])
-        cur_doc_type = row.get("doc_type")
-        cur_type     = row.get("type")
-        cur_disc     = row.get("discipline_id")
-
-        rec = Record(
-            title=title,
-            doc_type="" if cur_doc_type is None else str(cur_doc_type),
-            type="" if cur_type is None else str(cur_type),
-            discipline_id="" if cur_disc is None or is_empty(cur_disc) else str(cur_disc),
-        )
-        res = classify_record(rec)
-
+    for res in writer.results:
         disc_value = int(res.discipline_id.value) if res.discipline_id.value else None
-
         if include_reasons:
             out.append({
                 "doc_type":      (res.doc_type.value, res.doc_type.reason),
