@@ -7,7 +7,6 @@ build/
 dist/
 output/*
 !output/.gitkeep
-!output/classified.csv
 .idea/
 .vscode/
 *.tmp
