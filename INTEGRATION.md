@@ -32,9 +32,8 @@ repo root):
 
 ```
 src/classifier/             ← the whole package
-input/classified_csv/       ← labelled training data (client taxonomy)
+input/classified_csv/       ← labelled training data
 input/disciplines.csv       ← DEST disciplines table export (FK target)
-input/discipline_fold.csv   ← client_id → dest_id mapping
 pyproject.toml              ← package metadata (or merge entries into yours)
 INTEGRATION.md              ← this file
 ```
@@ -59,35 +58,29 @@ discipline classification, and types like ISO (Piping) or PFD (Process)
 that strongly imply a discipline are leveraged without hand-coding the
 implication.
 
-### How the discipline pipeline folds client → DEST
+### How the discipline pipeline learns discipline rules
 
-The labelled CSVs in `input/classified_csv/` use the **client's**
-discipline taxonomy. DEST has 7 internal disciplines (Civil, Electrical,
-EMT, I&C, Mechanical, Piping, Process) that the client taxonomy folds
-into via `input/discipline_fold.csv`.
+Discipline rules are learned directly from the labelled `discipline_id`
+column in `input/classified_csv/`. Those ids are validated against
+`input/disciplines.csv` at learn time — any id not present in the
+disciplines table is dropped as an orphan and a WARNING is emitted.
+Disciplines with fewer than `MIN_CLASS_DOCS` labelled examples produce
+no rules and stay NULL at runtime.
 
-The learner reads each labelled `(client_discipline_id, title)` pair,
-looks the client_id up in the fold, and trains rules under the
-**DEST** id. The RDS pipeline therefore writes DEST ids directly into
-`documents.discipline_id`, which is FK-safe (every dest_id in the fold
-is validated against `input/disciplines.csv` at learn time).
+The RDS pipeline writes these ids directly into `documents.discipline_id`,
+which is FK-safe because only validated ids ever appear in the generated
+configs.
 
-Client ids that have no fold entry are dropped as orphans. Add a row
-to `input/discipline_fold.csv` to bring them back.
+To improve coverage:
+- Add more labelled rows to `input/classified_csv/` for sparse disciplines.
+- Or add a new discipline to `input/disciplines.csv` and label rows
+  under its id.
 
-**Three files to keep in sync:**
-- `input/disciplines.csv` — re-export when DEST adds/renames/deletes a
-  discipline.
-- `input/discipline_fold.csv` — edit when the client adds a new
-  discipline you want to absorb, or you decide a different mapping.
-- `input/classified_csv/` — append new labelled rows here.
-
-After any of those change, re-run both learners to regenerate the
-keyword and type-hint configs:
+After either change, re-run both learners to regenerate the configs:
 
 ```bash
-learn-discipline-keywords   # title-keyword rules per DEST discipline
-learn-type-discipline       # type-code -> DEST discipline majority map
+learn-discipline-keywords   # title-keyword rules per discipline
+learn-type-discipline       # type-code -> discipline majority map
 ```
 
 The pipeline logs a WARNING at startup if it detects training data
@@ -152,23 +145,21 @@ consumer repo and tick the boxes as you go:
 [ ] src/classifier/                     -> <consumer>/src/classifier/
 [ ] input/classified_csv/               -> <consumer>/input/classified_csv/
 [ ] input/disciplines.csv               -> <consumer>/input/disciplines.csv
-[ ] input/discipline_fold.csv           -> <consumer>/input/discipline_fold.csv
 [ ] INTEGRATION.md                      -> <consumer>/docs/CLASSIFIER_INTEGRATION.md
 [ ] Add `psycopg2-binary>=2.9` to consumer pyproject.toml (or vendor's psycopg2)
 [ ] Add `pandas>=2.0` if consumer doesn't already pin it (needed by the learners only)
 [ ] Run from consumer repo root: `python -c "from classifier.pipeline.classify_rds import classify_from_rds"`
-[ ] (If retraining locally) `pip install -e .` and run the three learners
+[ ] (If retraining locally) `pip install -e .` and run the learners
 ```
 
 The classifier reads paths **relative to the current working directory**
 (e.g. `input/classified_csv/`, `src/classifier/config/type_keywords.py`).
 Run your consumer code from a directory where those resolve. If your
 repo has a different layout, the cleanest fix is symlinking
-`input/classified_csv/`, `input/disciplines.csv`, and
-`input/discipline_fold.csv` to wherever they actually live in your
-repo. The only paths the **runtime** reads are the generated configs
-under `src/classifier/config/` — those are always Python imports, so
-they don't depend on cwd.
+`input/classified_csv/` and `input/disciplines.csv` to wherever they
+actually live in your repo. The only paths the **runtime** reads are
+the generated configs under `src/classifier/config/` — those are always
+Python imports, so they don't depend on cwd.
 
 ## Extending the classifier with new output producers
 
@@ -383,16 +374,15 @@ Re-run them whenever you add new labelled rows to
 generated files are older than the labelled CSVs.
 
 **Re-export `input/disciplines.csv`** any time you add, rename, or
-delete a DEST discipline. The fold table's `dest_id` column is
-validated against this CSV at learn time — if a dest_id in the fold
-isn't in the disciplines table, `learn-discipline-keywords` aborts
-with a clear error rather than silently writing FK-invalid values.
+delete a discipline. The `discipline_id` column in `input/classified_csv/`
+is validated against this CSV at learn time — any id not present in the
+disciplines table is dropped as an orphan, and `learn-discipline-keywords`
+logs a WARNING rather than silently writing FK-invalid values.
 
-**Edit `input/discipline_fold.csv`** when the client adds a new
-discipline you want to absorb, or when you decide a different mapping
-(e.g. client's "Instrumentation" should fold to DEST's I&C instead of
-Mechanical). Columns: `client_id, dest_id, note`. Client ids with no
-row in this file are dropped from training as orphans.
+**To expand discipline coverage**, add labelled rows to
+`input/classified_csv/` (for existing disciplines) or add a new row to
+`input/disciplines.csv` and label rows under its id. Then re-run the
+learners.
 
 ### Adding a new type override
 

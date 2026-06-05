@@ -137,7 +137,7 @@ regex pattern in
 | Constant | Where | What it does |
 |---|---|---|
 | `BUCKETS` | [config/buckets.py](src/classifier/config/buckets.py) | The 10 internal content buckets (don't reorder) |
-| `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 2-class fold (Drawings or Documents) |
+| `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 3-class fold (Drawings, Sheets, or Documents) |
 | `KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
 | `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter dossier Type code → bucket |
 | `BUCKET_PRIMARY_CODE` | [config/buckets.py](src/classifier/config/buckets.py) | Bucket → 3-letter code used in proposed target filename |
@@ -146,7 +146,7 @@ regex pattern in
 
 ## Bucket → Class mapping
 
-The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS`:
+The 10-bucket → 3-class fold lives in `BUCKET_TO_CLASS`:
 
 | Bucket | Class |
 |---|---|
