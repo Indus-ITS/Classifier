@@ -6,7 +6,8 @@ fills ``doc_type`` and ``type`` from the row's ``title`` alone, writes
 identical row count. Only ``doc_type`` and ``type`` may differ.
 
 * ``doc_type`` is normalized to the lowercase enum ``{drawing, document, sheet}``.
-  Existing values fold via DRAWING_ALIASES / DOCUMENT_ALIASES. Empty /
+  Existing values fold via DRAWING_ALIASES / SHEET_ALIASES /
+  DOCUMENT_ALIASES. Empty /
   unrecognized values fall back to ``pick_type(score_types(title))``;
   when confidence is ``high``, derive doc_type from the picked type's
   bucket. Otherwise default to ``document`` (intentional business bias).

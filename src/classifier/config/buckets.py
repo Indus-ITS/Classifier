@@ -1,7 +1,7 @@
 """Bucket taxonomy: the 10 internal buckets and their fold to user-facing classes.
 
 The 10 buckets are the fine-grained classification; BUCKET_TO_CLASS folds
-them down to the 2-class user output (Drawings / Documents). TYPE_TO_BUCKET
+them down to the 3-class user output (Drawings / Documents / Sheets). TYPE_TO_BUCKET
 maps dossier 3-letter Type codes to buckets, and BUCKET_PRIMARY_CODE goes
 the other way for proposed target filenames.
 """
