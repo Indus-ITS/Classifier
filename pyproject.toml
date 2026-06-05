@@ -17,6 +17,7 @@ build-type-enum     = "classifier.tools.build_type_enum:main"
 learn-type-keywords       = "classifier.tools.learn_type_keywords:main"
 learn-discipline-keywords = "classifier.tools.learn_discipline_keywords:main"
 learn-type-discipline     = "classifier.tools.learn_type_discipline:main"
+learn-sheet-patterns      = "classifier.tools.learn_sheet_patterns:main"
 
 [build-system]
 requires = ["setuptools>=61"]
