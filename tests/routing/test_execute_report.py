@@ -21,7 +21,7 @@ def test_execute_copies_winner_and_creates_buckets(tmp_path):
     src = _make(tmp_path, ["16-01-19-2602-B.pdf", "16-01-19-2602-A.pdf"])
     index = {"16-01-19-2602": Classification("drawing", "P&ID")}
     dest = tmp_path / "dest"
-    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest, on_duplicate="rename")
+    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest)
     done = execute(plan, dry_run=False)
     assert (dest / "Drawings" / "16-01-19-2602-B.pdf").exists()
     assert not (dest / "Drawings" / "16-01-19-2602-A.pdf").exists()  # sibling not copied
@@ -34,7 +34,7 @@ def test_dry_run_copies_nothing(tmp_path):
     src = _make(tmp_path, ["16-01-19-2602-B.pdf"])
     index = {"16-01-19-2602": Classification("drawing", "x")}
     dest = tmp_path / "dest"
-    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest, on_duplicate="rename")
+    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest)
     execute(plan, dry_run=True)
     assert not dest.exists()
 
@@ -46,7 +46,7 @@ def test_report_rows_and_csv(tmp_path):
              "16-01-19-2999": Classification("document", "SPEC"),
              "16-01-19-3000": Classification("sheet", "LIST")}  # no file
     dest = tmp_path / "dest"
-    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest, on_duplicate="rename")
+    plan = build_plan(group_files(sorted(src.rglob("*"))), index, dest)
     rows = report_rows(plan, index)
     statuses = {r["status"] for r in rows}
     assert "copied" in statuses

@@ -10,7 +10,7 @@ CUST_REF = re.compile(r"\d{2}-\d{2}-\d{2}-\d{4}")
 # optionally followed by more descriptive text. Single-char value so a
 # 4-digit cust_ref tail is never misread as a revision.
 _REV_TAIL = re.compile(
-    r"^[\s_-]+(?:REV\.?)?([A-Z]|\d)(?:[\s_.\-].*)?$", re.IGNORECASE
+    r"^[\s_-]+(?:REV[\s_.]*)?([A-Z]|\d)(?:[\s_.\-].*)?$", re.IGNORECASE
 )
 _REV_WHOLE = re.compile(
     r"[\s_-]+(?:REV[\s_.]*)?([A-Z]|\d)(?:[\s_.\-].*)?$", re.IGNORECASE
