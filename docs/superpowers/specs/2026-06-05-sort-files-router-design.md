@@ -1,7 +1,14 @@
 # sort-files — classification-driven file router
 
 **Date:** 2026-06-05
-**Status:** Approved (design); implementation not started.
+**Status:** Approved (design).
+**Amendment (during planning):** `--on-duplicate` was dropped as YAGNI. A
+winner's destination basename is a pure function of its filename stem, and a
+group's key is derived from that same stem, so two distinct groups can never
+produce the same basename in the same bucket — destination collisions are
+impossible by construction. The implementation therefore omits the
+`--on-duplicate` flag and any collision-resolution logic. Everything else
+below stands.
 **Scope:** A new standalone `sort-files` CLI + a loosely-coupled `routing/`
 package. It CONSUMES the classified CSV (the source of truth) and routes
 deliverable files into per-class bucket folders. It does not compute
