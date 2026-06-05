@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, Sequence
 
-MIN_HEADER_COLS: int = 3   # adjacent non-empty text cells to call a row a header
+MIN_HEADER_COLS: int = 3   # text cells required to call a row a header
 MIN_DATA_ROWS: int = 5     # consistent data rows required under the header
 
 
@@ -31,22 +31,18 @@ def _is_empty(cell) -> bool:
     return cell is None or str(cell).strip() == ""
 
 
-def _header_span(row) -> tuple[int, int] | None:
-    """Longest run of adjacent text cells; return (start, width) if the
-    run is at least MIN_HEADER_COLS wide, else None."""
-    best_start = best_len = 0
-    cur_start = cur_len = 0
-    for i, cell in enumerate(row):
-        if _is_text(cell):
-            if cur_len == 0:
-                cur_start = i
-            cur_len += 1
-            if cur_len > best_len:
-                best_len, best_start = cur_len, cur_start
-        else:
-            cur_len = 0
-    if best_len >= MIN_HEADER_COLS:
-        return best_start, best_len
+def _header_cols(row) -> list[int] | None:
+    """Column indices of the text cells in a candidate header row.
+
+    Gaps are allowed: merged header cells leave Nones between labels
+    (e.g. ITEM | DESCRIPTION | <merged gap> | UNIT | QTY), so we collect
+    the specific text columns rather than requiring an adjacent run.
+    Returns the column indices if there are at least MIN_HEADER_COLS of
+    them, else None.
+    """
+    cols = [i for i, c in enumerate(row) if _is_text(c)]
+    if len(cols) >= MIN_HEADER_COLS:
+        return cols
     return None
 
 
@@ -58,40 +54,35 @@ class TableHit:
     n_data_rows: int
 
 
-def _row_fills_span(row, start: int, width: int) -> bool:
-    """True iff a majority of the header's columns are populated in row."""
-    filled = 0
-    for c in range(start, start + width):
-        cell = row[c] if c < len(row) else None
-        if cell is not None and str(cell).strip() != "":
-            filled += 1
-    return filled > width // 2  # strict majority: more than half
+def _row_fills_cols(row, cols) -> bool:
+    """True iff a strict majority of the header's columns are populated."""
+    filled = sum(1 for c in cols if c < len(row) and not _is_empty(row[c]))
+    return filled > len(cols) // 2  # strict majority: more than half
 
 
 def find_table(grid: Sequence) -> TableHit | None:
     """Return the first qualifying table in the grid, or None.
 
-    A qualifying table is a header row (>= MIN_HEADER_COLS adjacent text
-    cells) followed by >= MIN_DATA_ROWS rows that each keep a majority of
-    those header columns populated. Data rows may be interrupted by blank
-    rows without resetting the count, but blanks do not count as data.
+    A qualifying table is a header row (>= MIN_HEADER_COLS text cells,
+    gaps allowed) followed by >= MIN_DATA_ROWS rows that each keep a
+    strict majority of those header columns populated. Blank rows are
+    skipped without resetting the count; a row that breaks the structure
+    stops the count.
     """
     for r, row in enumerate(grid):
-        span = _header_span(row)
-        if span is None:
+        cols = _header_cols(row)
+        if cols is None:
             continue
-        start, width = span
         n_data = 0
         for below in grid[r + 1:]:
-            if all(_is_empty(below[c] if c < len(below) else None)
-                   for c in range(start, start + width)):
+            if all(_is_empty(below[c] if c < len(below) else None) for c in cols):
                 continue  # blank row inside/after the table — skip, don't reset
-            if _row_fills_span(below, start, width):
+            if _row_fills_cols(below, cols):
                 n_data += 1
             else:
                 break  # structure broke; stop counting this header's table
         if n_data >= MIN_DATA_ROWS:
-            return TableHit(r, start, width, n_data)
+            return TableHit(r, cols[0], len(cols), n_data)
     return None
 
 

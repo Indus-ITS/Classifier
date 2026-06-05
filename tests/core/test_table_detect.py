@@ -1,6 +1,6 @@
 import openpyxl
 from classifier.core.table_detect import (
-    _header_span,
+    _header_cols,
     MIN_HEADER_COLS,
     find_table,
     MIN_DATA_ROWS,
@@ -8,21 +8,24 @@ from classifier.core.table_detect import (
 )
 
 
-def test_header_span_finds_three_adjacent_text_cells():
+def test_header_cols_finds_three_adjacent_text_cells():
     row = [None, "Sr No", "Area", "Line Number", None]
-    start, width = _header_span(row)
-    assert (start, width) == (1, 3)
+    assert _header_cols(row) == [1, 2, 3]
 
 
-def test_header_span_rejects_too_few_columns():
+def test_header_cols_rejects_too_few_columns():
     row = [None, "Title", None, None]
-    assert _header_span(row) is None
+    assert _header_cols(row) is None
 
 
-def test_header_span_ignores_pure_numbers_as_header():
-    # a row of numbers is data, not a header
+def test_header_cols_ignores_pure_numbers_as_header():
     row = [1, 2, 3, 4]
-    assert _header_span(row) is None
+    assert _header_cols(row) is None
+
+
+def test_header_cols_tolerates_gaps_from_merged_cells():
+    row = ["ITEM", "MATERIAL DESCRIPTION", None, None, None, "UNIT", "QTY"]
+    assert _header_cols(row) == [0, 1, 5, 6]
 
 
 def test_min_header_cols_is_three():
@@ -106,3 +109,12 @@ def test_find_table_skips_blank_row_within_data():
     hit = find_table(grid)
     assert hit is not None
     assert hit.n_data_rows == 5
+
+
+def test_find_table_accepts_gapped_header_mto():
+    header = ["ITEM", "DESCRIPTION", None, None, "UNIT", "QTY"]
+    rows = [[str(i), "Pipe", None, None, "m", i * 10] for i in range(1, 7)]
+    grid = [header, *rows]
+    hit = find_table(grid)
+    assert hit is not None
+    assert hit.n_data_rows == 6
