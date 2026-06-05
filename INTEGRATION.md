@@ -33,7 +33,7 @@ repo root):
 ```
 src/classifier/             ← the whole package
 input/classified_csv/       ← labelled training data
-input/disciplines.csv       ← DEST disciplines table export (FK target)
+input/disciplines.csv       ← disciplines table export (discipline_id FK target)
 pyproject.toml              ← package metadata (or merge entries into yours)
 INTEGRATION.md              ← this file
 ```
@@ -46,17 +46,17 @@ feeds the second:
 1. **Type classification** runs first on the title alone, picking a
    3-letter type code (e.g. `ISO`, `PFD`, `REQ`).
 2. **Discipline classification** then runs on the title PLUS the picked
-   type. Title keywords score per DEST discipline as before; the type
-   adds a fixed boost to the discipline it maps to (see
+   type. Title keywords score per discipline; the type adds a fixed boost
+   to the discipline it maps to (see
    `src/classifier/config/type_to_discipline.py`, learned from labelled
    data). The boost is calibrated so the type alone cannot fire a
    classification — it only nudges a weak keyword signal into a
    confident decision.
 
 This means improving type classification automatically improves
-discipline classification, and types like ISO (Piping) or PFD (Process)
-that strongly imply a discipline are leveraged without hand-coding the
-implication.
+discipline classification: a type that strongly implies a discipline
+(e.g. a process-diagram type → Process) is leveraged without hand-coding
+the implication.
 
 ### How the discipline pipeline learns discipline rules
 
@@ -317,15 +317,16 @@ No per-row logging (would flood at scale).
 - **No re-classification.** A row whose `doc_type` / `type` /
   `discipline_id` is already populated is skipped entirely. If you
   want to re-classify a row, clear its fields first.
-- **No automated tests in this iteration.** The user explicitly opted
-  out. There are no `pytest` suites for the RDS pipeline — verify
-  changes manually.
+- **Test suite present.** The repo ships a `pytest` suite (run `pytest`
+  from the repo root) — including fake-connection tests for the RDS
+  read/write path and golden/snapshot locks for the classifiers.
 - **No multi-language support.** Titles are assumed to be ASCII-ish
   engineering English (the canonicaliser uppercases and strips
   punctuation but does not translate).
 - **No fuzzy matching.** The classifier matches by exact tokenised
-  phrase. Typos in titles will not match unless explicitly covered by
-  a regex in `src/classifier/config/type_overrides.py`.
+  phrase. Typos in titles will not match unless explicitly added as a
+  phrase to `HARD_OVERRIDES` in
+  `src/classifier/config/type_overrides.py`.
 - **No database migrations.** This pipeline never creates indexes,
   alters schemas, or migrates data. It only UPDATEs existing rows.
 - **No connection management.** The caller opens, closes, and rolls
@@ -438,7 +439,6 @@ Do NOT:
   dynamic SET clauses.
 - Overwrite `doc_type` / `type` / `discipline_id` for rows that are
   already populated — the classifier intentionally won't touch them.
-- Add tests (the user opted out).
 
 If you need to re-classify a row, set its `doc_type` / `type` /
 `discipline_id` to NULL first, then call `classify_from_rds(conn)`.

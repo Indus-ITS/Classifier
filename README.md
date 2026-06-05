@@ -27,7 +27,10 @@ input's 28-column schema, column order, and row count.
 | `classify-rds`       | Same classifier logic against a PostgreSQL RDS `documents` table. Selects rows where any of `doc_type` / `type` / `discipline_id` is NULL/empty, fills them from the row `title`, UPDATEs in place. Reads DSN from `PGHOST` / `PGDATABASE` / `PGUSER` / `PGPASSWORD` / `PGPORT` env vars. See [Pipeline use](#pipeline-use-rds) for the in-process API. |
 | `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
 | `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
-| `learn-discipline-keywords` | Re-scan `input/classified_csv/` for `(title, discipline_id)` pairs and regenerate `src/classifier/config/discipline_keywords.py`. Mirrors `learn-type-keywords`. |
+| `learn-type-keywords` | Mine `(title, type)` pairs from `input/classified_csv/` and regenerate `src/classifier/config/type_keywords.py` (the learned phrase→type rules). |
+| `learn-discipline-keywords` | Mine `(title, discipline_id)` pairs from `input/classified_csv/` and regenerate `src/classifier/config/discipline_keywords.py`. Trains directly on the labelled ids (validated against `input/disciplines.csv`); no fold. |
+| `learn-type-discipline` | Build the `type → discipline_id` majority hint map (`src/classifier/config/type_to_discipline.py`) that nudges discipline scoring. |
+| `learn-sheet-patterns` | Diagnostic: scan workbooks for table/sheet structure patterns. |
 | `sort-files`         | Consume `output/classified.csv`, match source files by `customer_ref`, copy one preferred file per logical document into `dest/<Drawings\|Documents\|Sheets>/` (pdf preferred for drawing/document, xlsx preferred for sheet), route unmatched files to `Unmatched/`, and write `route-report.csv`. Supports `--dry-run`. |
 
 ## sort-files router
@@ -61,12 +64,13 @@ classifier/
 ├── README.md
 │
 ├── src/classifier/                   # the package
-│   ├── config/                       # tunables (paths, buckets, keywords, patterns, schema)
-│   ├── core/                         # pure logic (scoring, extraction, normalisation, ...)
-│   ├── pipeline/                     # orchestration (enrich, audit, classify_from_rds)
-│   ├── io/                           # readers/writers (csv, rds)
-│   ├── cli/                          # console entry points + presentation helpers
-│   └── tools/                        # offline diagnostic commands (convert-classified, build-type-enum)
+│   ├── config/                       # buckets, generated keyword/type/discipline tables, schema, enum
+│   ├── core/                         # pure logic: scoring engine, classify_record, folding, table_detect
+│   ├── pipeline/                     # orchestration: run loop, stats, classify_titles, classify_rds
+│   ├── io/                           # readers/writers: csv_io, rds, workbook, memory, classified_index, normalize, schema
+│   ├── routing/                      # sort-files router: cust_ref, dedup, plan, execute, report
+│   ├── cli/                          # console entry points (classify, classify-rds, sort-files)
+│   └── tools/                        # offline commands: convert-classified, build-type-enum, learners
 │
 ├── input/
 │   ├── To be classified/             # document.csv to classify
@@ -114,23 +118,31 @@ For large tables, add partial indexes on the three filtered columns
 
 ## How to iterate on accuracy
 
-1. Edit keyword rules in
-   [src/classifier/config/type_keywords.py](src/classifier/config/type_keywords.py) —
-   `KEYWORD_RULES[bucket]` is the main lever. Weights are 1-5; weight 5
-   is required for `high` confidence.
-2. Re-run `classify` and inspect `output/classified.csv`.
+`type_keywords.py` and `discipline_keywords.py` are **generated** — don't edit
+them by hand. To improve accuracy:
+
+1. **Add labelled examples** to `input/classified_csv/` (more `(title, type)`
+   and `(title, discipline_id)` rows), then re-run `learn-type-keywords` and
+   `learn-discipline-keywords`.
+2. **Force a specific type** deterministically: add the title phrase to
+   `HARD_OVERRIDES` (or suppress a false hit with `NEGATIVE_KEYWORDS`) in
+   [src/classifier/config/type_overrides.py](src/classifier/config/type_overrides.py).
+3. Re-run `classify` and inspect `output/classified.csv`.
+
+A type fires only when its top phrase score clears the margin/floor thresholds
+in [`core/scoring.py`](src/classifier/core/scoring.py); otherwise `type` stays
+empty. For a human-readable summary of the title→type patterns, see
+[docs/type-classification-patterns.md](docs/type-classification-patterns.md).
 
 ### Typo tolerance policy
 
-The keyword bank uses targeted regex tolerance for real typos seen in
-the data (e.g. `arra?n?g(e)?ment` for ARRANGEMENT/ARRANGMENT/ARRAGEMENT,
-`requ[a-z]{2,5}tion` for REQUISITION/REQUSITION/REQUISTION/REQUISTATION).
-
-**Generic fuzzy matching (Levenshtein/soundex) is intentionally not
-used** — it introduces unpredictable false positives that are expensive
-to debug. When a new typo surfaces, the fix is to relax the relevant
-regex pattern in
-[src/classifier/config/type_keywords.py](src/classifier/config/type_keywords.py).
+Type matching is **exact tokenised phrase matching** on a canonicalised title
+(uppercased; dash/parenthesis/revision-noise stripped; regular plurals folded
+to singular — see `core/scoring.canonicalize_title`). There is **no fuzzy
+matching** (Levenshtein/soundex): it introduces unpredictable false positives
+that are expensive to debug. When a real typo must match, add the exact typo'd
+phrase to `HARD_OVERRIDES` in
+[src/classifier/config/type_overrides.py](src/classifier/config/type_overrides.py).
 
 ## Tunables
 
@@ -138,11 +150,11 @@ regex pattern in
 |---|---|---|
 | `BUCKETS` | [config/buckets.py](src/classifier/config/buckets.py) | The 10 internal content buckets (don't reorder) |
 | `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 3-class fold (Drawings, Sheets, or Documents) |
-| `KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
-| `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter dossier Type code → bucket |
-| `BUCKET_PRIMARY_CODE` | [config/buckets.py](src/classifier/config/buckets.py) | Bucket → 3-letter code used in proposed target filename |
-| `DISCIPLINE_KEYWORD_RULES` | [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py) | `[(regex, discipline), ...]` — fallback discipline inference |
-| `HARD_OVERRIDES` | [config/type_overrides.py](src/classifier/config/type_overrides.py) | Per-pattern type overrides applied before keyword scoring |
+| `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter Type code → bucket |
+| `TYPE_KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | **Generated** `{type: ((phrase, weight), ...)}` — learned phrase→type scoring |
+| `HARD_OVERRIDES` / `NEGATIVE_KEYWORDS` | [config/type_overrides.py](src/classifier/config/type_overrides.py) | Hand-maintained deterministic type forcing / suppression |
+| `DISCIPLINE_KEYWORDS` | [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py) | **Generated** `{discipline_id: ((phrase, weight), ...)}` — learned per-discipline scoring (fold-free) |
+| `TYPE_TO_DISCIPLINE` | [config/type_to_discipline.py](src/classifier/config/type_to_discipline.py) | **Generated** `{type: discipline_id}` hint that nudges discipline scoring |
 
 ## Bucket → Class mapping
 
