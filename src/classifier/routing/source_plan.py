@@ -83,7 +83,7 @@ def build_plan(rows: list[DocRow], files: list[Path]) -> Plan:
             continue
         for e in cands:
             claimed.add(e.path)
-        g = pick_winner(cands, row.doc_type or None)
+        g = pick_winner(cands, row.doc_type or None, format_first=True)
         if g.winner is None:
             skipped.append(key)
             continue
@@ -102,7 +102,7 @@ def build_plan(rows: list[DocRow], files: list[Path]) -> Plan:
         leftover.setdefault(e.cust_ref, []).append(e)
     for cref in sorted(leftover):
         es = leftover[cref]
-        g = pick_winner(es, None)
+        g = pick_winner(es, None, format_first=True)
         if g.winner is None:
             continue
         we = next(e for e in es if e.path == g.winner)

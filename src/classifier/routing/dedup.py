@@ -69,18 +69,36 @@ def group_files(paths: Iterable[Path]) -> dict[str, list[FileEntry]]:
     return groups
 
 
-def pick_winner(entries: list[FileEntry], doc_type: str | None) -> Group:
-    """Winner = max rev_rank, then min class-aware format_priority, then
-    lexically smallest filename. Only candidate extensions can win; if none,
-    winner is None. All non-winning files become `related`."""
+def pick_winner(entries: list[FileEntry], doc_type: str | None,
+                *, format_first: bool = False) -> Group:
+    """Pick one winner among candidate-ext files; non-winners become `related`.
+
+    Default (``format_first=False``): revision-first — max rev_rank, then the
+    class-aware preferred format, then lexical name. (Used by the doc_type
+    ``sort-files`` router.)
+
+    ``format_first=True``: preferred-format-first — take the class's most
+    preferred format that EXISTS (e.g. pdf for a document; xlsx for a sheet),
+    then the latest revision *within that format*, then lexical name. So a pdf
+    is chosen whenever any pdf is present; revision only decides among files of
+    that same format, and only falls back to other formats when the preferred
+    one is missing.
+    """
     group_key = entries[0].group_key if entries else ""
     candidates = [e for e in entries if e.ext in CANDIDATE_EXTS]
     if not candidates:
         return Group(group_key, None, tuple(e.path for e in entries))
-    # Two-step selection (clear and total-order-safe across rev_rank types):
-    best_rank = max(e.rev_rank for e in candidates)
-    top = [e for e in candidates if e.rev_rank == best_rank]
-    top.sort(key=lambda e: (format_priority(e.ext, doc_type), e.path.name))
+    if format_first:
+        best_fp = min(format_priority(e.ext, doc_type) for e in candidates)
+        tier = [e for e in candidates if format_priority(e.ext, doc_type) == best_fp]
+        best_rank = max(e.rev_rank for e in tier)
+        top = [e for e in tier if e.rev_rank == best_rank]
+    else:
+        best_rank = max(e.rev_rank for e in candidates)
+        tier = [e for e in candidates if e.rev_rank == best_rank]
+        best_fp = min(format_priority(e.ext, doc_type) for e in tier)
+        top = [e for e in tier if format_priority(e.ext, doc_type) == best_fp]
+    top.sort(key=lambda e: e.path.name)
     winner = top[0]
     related = tuple(e.path for e in entries if e.path != winner.path)
     return Group(group_key, winner.path, related)

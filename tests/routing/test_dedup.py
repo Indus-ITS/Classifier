@@ -4,6 +4,26 @@ from classifier.routing.dedup import (
 )
 
 
+def test_format_first_prefers_pdf_over_higher_rev_docx():
+    # A lower/no-rev pdf still wins over a higher-rev docx when format_first=True.
+    entries = [
+        parse_entry(Path("16-01-67-2602-001.pdf")),   # no parsed rev
+        parse_entry(Path("16-01-67-2602-1.docx")),     # spurious numeric "rev 1"
+    ]
+    g = pick_winner(entries, "document", format_first=True)
+    assert g.winner.name == "16-01-67-2602-001.pdf"
+    # Default (rev-first) would instead pick the docx:
+    g2 = pick_winner(entries, "document")
+    assert g2.winner.name == "16-01-67-2602-1.docx"
+
+
+def test_format_first_latest_rev_among_pdfs():
+    entries = [parse_entry(Path("16-01-19-2602-A.pdf")),
+               parse_entry(Path("16-01-19-2602-B.pdf"))]
+    g = pick_winner(entries, "document", format_first=True)
+    assert g.winner.name == "16-01-19-2602-B.pdf"   # latest revision within pdf
+
+
 def test_parse_entry_fields():
     e = parse_entry(Path("a/16-01-39-2602-B.pdf"))
     assert e.cust_ref == "16-01-39-2602"
