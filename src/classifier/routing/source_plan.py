@@ -6,9 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from classifier.routing.dedup import group_files, pick_winner
+from classifier.routing.dedup import parse_entry, pick_winner
 
 UNMATCHED = "unmatched"
+_NOREF = "\x00noref\x00"
 
 
 @dataclass(frozen=True)
@@ -36,14 +37,23 @@ def build_source_plan(sources, doc_index: dict[str, str]) -> SourcePlan:
       * cust_ref present but NOT in doc_index -> "unmatched" (a stranger).
       * no cust_ref at all -> the source label (kept in its source bucket;
         we simply can't table-verify it).
+
+    Grouping is by ``customer_ref`` when present, so exactly ONE preferred file
+    is emitted per documents-table row (all files sharing a cust_ref — main
+    doc, Comment Response Sheet, alternate formats — collapse to one winner).
+    Files with no cust_ref are grouped by their rev-stripped stem instead.
     """
     actions: list[SourceCopyAction] = []
     skipped: list[tuple[str, str]] = []
     for label, paths in sources:
-        groups = group_files(list(paths))
-        for group_key in sorted(groups):
-            entries = groups[group_key]
-            cust_ref = next((e.cust_ref for e in entries if e.cust_ref), None)
+        groups: dict[str, list] = {}
+        for p in paths:
+            e = parse_entry(Path(p))
+            key = e.cust_ref if e.cust_ref else f"{_NOREF}{e.group_key}"
+            groups.setdefault(key, []).append(e)
+        for key in sorted(groups):
+            entries = groups[key]
+            cust_ref = entries[0].cust_ref  # shared across the group; None for no-ref
             if cust_ref is None:
                 bucket, matched, doc_type = label, False, None
             elif cust_ref in doc_index:
@@ -52,7 +62,7 @@ def build_source_plan(sources, doc_index: dict[str, str]) -> SourcePlan:
                 bucket, matched, doc_type = UNMATCHED, False, None
             g = pick_winner(entries, doc_type)
             if g.winner is None:
-                skipped.append((label, group_key))
+                skipped.append((label, key))
                 continue
             we = next(e for e in entries if e.path == g.winner)
             actions.append(SourceCopyAction(

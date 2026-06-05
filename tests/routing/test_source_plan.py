@@ -37,6 +37,21 @@ def test_dedup_one_winner_pdf_for_document():
     assert acts[0].chosen_format == "pdf"
 
 
+def test_one_winner_per_cust_ref_collapses_crs_and_formats():
+    # Main doc (pdf+docx, rev B) plus a Comment Response Sheet that shares the
+    # same cust_ref must collapse to ONE winner (the preferred pdf), no extras.
+    sources = [("deliverable", [
+        Path("C-A-ED-SA-1/16-01-39-2602-B.pdf"),
+        Path("C-A-ED-SA-1/16-01-39-2602-B.docx"),
+        Path("C-A-ED-SA-1/Comment Response Sheet-16-01-39-2602.xlsx"),
+    ])]
+    plan = build_source_plan(sources, {"16-01-39-2602": "document"})
+    acts = [a for a in plan.actions if a.customer_ref == "16-01-39-2602"]
+    assert len(acts) == 1                       # exactly one doc per cust_ref
+    assert acts[0].src.name == "16-01-39-2602-B.pdf"
+    assert len(acts[0].related) == 2            # docx + CRS xlsx left behind
+
+
 def test_sheet_prefers_xlsx():
     sources = [("deliverable", [
         Path("16-01-19-2602-B.pdf"), Path("16-01-19-2602-B.xlsx")])]
