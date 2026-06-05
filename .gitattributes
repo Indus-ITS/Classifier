@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Golden fixtures are byte-compared against LF output; never normalize them
+# (a CRLF checkout on Windows would otherwise red-fail tests/golden/test_csv_golden.py).
+tests/golden/*.csv -text
