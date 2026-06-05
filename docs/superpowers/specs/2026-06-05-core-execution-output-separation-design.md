@@ -169,16 +169,69 @@ def classify_record(rec: Record) -> ClassificationResult:
     return ClassificationResult(FieldResult(*dt), FieldResult(*ty), FieldResult(*di))
 ```
 
+**The `_row.py` functions already return `(value, reason)` tuples** with a
+shared, documented reason vocabulary (`_row.py:22-72`); all three current
+call sites already call them, so the reasons are already consistent across
+backends. `FieldResult(*dt)` therefore composes them unchanged — no
+behavioral edit to `_row.py` in Phase 1. (Verified 2026-06-05.)
+
+**Who decides what gets persisted (the only-fill-empty / diff rule).**
+This rule must NOT live in the writers — it is core business logic and is
+the duplication the refactor removes. Extract it once, pure, from the
+inline block at `classify_rds.py:110-128`:
+
+```python
+# core/classify.py  — pure; decides which fields a sink should write
+def plan_writes(rec: Record, result: ClassificationResult) -> dict[str, object]:
+    """Fields to persist, applying only-fill-empty + doc_type diff.
+       Returns {} when nothing should change (→ a 'skipped' row)."""
+    writes: dict[str, object] = {}
+    if result.doc_type.value != rec.doc_type.strip().lower():
+        writes["doc_type"] = result.doc_type.value
+    if rec.type == "" and result.type.value != "":
+        writes["type"] = result.type.value
+    if rec.discipline_id == "" and result.discipline_id.value not in ("", None):
+        writes["discipline_id"] = result.discipline_id.value
+    return writes
+```
+
 ```python
 # execution backend contract (input variant)
 class RecordReader(Protocol):
     def __iter__(self) -> Iterator[Record]: ...   # each Record carries its own .handle
+    def close(self) -> None: ...                  # release file/cursor; no-op if none
 
 # output producer contract (output variant)
 class ResultWriter(Protocol):
-    def write(self, rec: Record, result: ClassificationResult) -> bool: ...  # True if changed
+    def write(self, rec: Record, result: ClassificationResult,
+              writes: Mapping[str, object]) -> None: ...
     def close(self) -> None: ...
 ```
+
+`writes` is computed by `run()` via `plan_writes`; the writer only
+**persists** — it never re-derives the fill rule. A writer free to persist
+everything (the CSV full-row rewriter) may ignore `writes` and read
+`result` directly; a diff writer (RDS) persists exactly the `writes` keys.
+
+**Ownership / cleanup.** `run()` owns the lifecycle of both reader and
+writer and closes both even on a mid-loop exception. `CsvReader`/`CsvWriter`
+own their file handles (closed in their `close()`); `RdsReader`/`RdsWriter`
+do **not** own the injected `conn` (caller's lifecycle, per `io/rds.py`
+policy) — they own only their cursors.
+
+**RDS transaction boundary (pinned).** `RdsWriter.write` issues one
+per-row `UPDATE` (current `update_row` behavior). Commits are owned by
+`RdsWriter`: every `commit_every` *processed* rows and a final commit in
+`close()` — identical to today's `classify_rds.py:130-139`. `run()` knows
+nothing about commits; `commit_every` is `RdsWriter` config. Other writers
+have no transaction semantics.
+
+**Per-record error policy (pinned): fail-fast.** `run()` does not wrap
+per-record work in try/except — an exception propagates, matching current
+behavior in all three backends (RDS lets the caller `rollback`; CSV/pandas
+aborts). Partial RDS work committed up to the last `commit_every` boundary
+stays committed; re-running resumes via idempotence. This is a documented
+non-change, not a new policy.
 
 ```python
 # pipeline/run.py — the only orchestration loop
@@ -187,17 +240,56 @@ def run(reader: RecordReader, writer: ResultWriter, *, on_progress=None) -> Stat
     try:
         for rec in reader:
             result = classify_record(rec)
-            changed = writer.write(rec, result)
-            stats.observe(result, changed)
+            writes = plan_writes(rec, result)        # core decides; writer obeys
+            writer.write(rec, result, writes)
+            stats.observe(rec, result, writes)       # updated iff writes non-empty
             if on_progress: on_progress(stats)
     finally:
+        reader.close()
         writer.close()
     return stats
 ```
 
-Stats aggregation lives once in `pipeline/stats.py`; each backend maps
-`Stats` to its own existing public dict shape **at the edge** so external
-contracts don't change.
+### Stats schema (the superset that maps back to every legacy shape)
+
+The "external dict shapes preserved" guarantee requires `Stats` to be a
+strict superset of all three legacy vocabularies. Legacy fields:
+
+- **RDS** (`classify_rds.py:48-57`): `rows_scanned`, `rows_updated`,
+  `rows_skipped`, `doc_type`/`type`/`discipline_id` reason Counters,
+  `callback_error`.
+- **CSV** (`cli/classify.py:58-105`): `doc_type` value distribution
+  *before* and *after*, plus `doc_type`/`type`/`discipline_id` reason
+  Counters.
+- **titles** (`classify_titles.py`): no stats — returns rows; with
+  `include_reasons=True` attaches `(value, reason)` per field (covered by
+  the per-field reasons already in the result).
+
+`Stats` fields:
+
+```
+rows_scanned: int
+rows_updated: int                 # writes non-empty
+rows_skipped: int                 # writes empty
+reasons: {field: Counter[str]}    # field ∈ {doc_type, type, discipline_id}
+doc_type_before: Counter[str]     # rec.doc_type (normalized) per row
+doc_type_after:  Counter[str]     # result.doc_type.value per row
+callback_error:  str | None       # set by the RdsWriter edge only
+```
+
+Per-backend mapping at the edge (no public contract changes):
+
+| Legacy field | Source in `Stats` |
+|---|---|
+| RDS `rows_scanned/updated/skipped` | same fields |
+| RDS `doc_type/type/discipline_id` | `reasons[field]` (as plain dict) |
+| RDS `callback_error` | `callback_error` |
+| CSV `doc_type before/after` | `doc_type_before` / `doc_type_after` |
+| CSV `*_reason` Counters | `reasons[field]` |
+| titles `(value, reason)` | already in `ClassificationResult` |
+
+`Stats.observe(rec, result, writes)` updates all of the above; aggregation
+lives once in `pipeline/stats.py`.
 
 ### Adding a variant with zero core changes (worked example)
 
@@ -207,12 +299,11 @@ To add JSONL output from the RDS stream, write one class:
 # io/jsonl_io.py  (new file, nothing else touched)
 class JsonlWriter:                       # structurally a ResultWriter
     def __init__(self, path): self._f = open(path, "w")
-    def write(self, rec, result):
+    def write(self, rec, result, writes):   # full-record sink: ignores `writes`
         self._f.write(json.dumps({"title": rec.title,
             "doc_type": result.doc_type.value,
             "type": result.type.value,
             "discipline_id": result.discipline_id.value}) + "\n")
-        return True
     def close(self): self._f.close()
 ```
 
@@ -247,24 +338,34 @@ Each phase is independently shippable and behavior-preserving.
 `cli/classify` against a fixture input. `classify_titles` fixture tests
 (lock the `int|None` discipline contract). Fake-`conn` test around
 `iter_unclassified`/`update_row` to lock RDS SQL + stats shape (fills the
-gap noted in INTEGRATION.md). Guard for everything below.
+gap noted in INTEGRATION.md). **Add reason-coverage assertions**: legacy
+golden output does not contain reasons, but reasons drive `Stats`, so add a
+fixture asserting the `*_reason` Counters from the current CSV/RDS runs
+(these become the `Stats.reasons` baseline). Guard for everything below.
 
 **Phase 1 — Extract the core row entry.** New `core/record.py` +
 `core/classify.py:classify_record`, composing existing `_row.py` functions
-unchanged. Repoint the three call sites. Files: +`core/record.py`,
-+`core/classify.py`; edit `classify_titles.py`, `pipeline/classify_rds.py`,
-`cli/classify.py`. Behavior identical. Guard: Phase 0 golden + fixtures.
+unchanged (they already return `(value, reason)` — verified). Repoint the
+three call sites. Files: +`core/record.py`, +`core/classify.py`; edit
+`classify_titles.py`, `pipeline/classify_rds.py`, `cli/classify.py`.
+Behavior identical. Guard: Phase 0 golden + fixtures. *Note: these call-site
+edits are partly throwaway — Phase 2 rewrites the same sites to use `run()`.
+Accepted: Phase 1 is shippable on its own and de-risks Phase 2 by isolating
+the core-entry extraction from the protocol introduction.*
 
 **Phase 2 — Protocols + generic loop.** New `pipeline/run.py` (`run` +
-`Stats`), `pipeline/stats.py`, `io/csv_io.py` (`CsvReader`/`CsvWriter`),
-thin `RdsReader`/`RdsWriter` adapters wrapping existing `io/rds.py`, and an
-`InMemory` reader/writer. Rewrite `classify_from_rds`, `cli/classify`,
-`classify_titles` to construct reader+writer and call `run`. Centralize the
-stale-rules check. Each backend maps `Stats` → its current public dict at
-the boundary so external shapes are unchanged. Files: +`pipeline/run.py`,
-+`pipeline/stats.py`, +`io/csv_io.py`; edit `io/rds.py` (adapters),
-`classify_rds.py`, `classify_titles.py`, `cli/classify.py`. Guard: golden
-CSV + RDS stats-shape test + classify_titles contract test.
+`plan_writes` wiring), `pipeline/stats.py` (the `Stats` superset above),
+`io/csv_io.py` (`CsvReader`/`CsvWriter`), thin `RdsReader`/`RdsWriter`
+adapters wrapping existing `io/rds.py`, and an `InMemory` reader/writer. Add
+`plan_writes` to `core/classify.py`. Rewrite `classify_from_rds`,
+`cli/classify`, `classify_titles` to construct reader+writer and call
+`run`. Centralize the stale-rules check. Each backend maps `Stats` → its
+current public dict at the boundary. `RdsWriter` owns commit cadence;
+`run()` owns reader+writer cleanup. Files: +`pipeline/run.py`,
++`pipeline/stats.py`, +`io/csv_io.py`; edit `core/classify.py`,
+`io/rds.py` (adapters), `classify_rds.py`, `classify_titles.py`,
+`cli/classify.py`. Guard: golden CSV + RDS stats-shape test (incl. commit
+cadence + cleanup-on-exception) + classify_titles contract test.
 
 **Phase 3 — Collapse the scoring engine.** New `core/scoring.py` with
 generic `score()`/`pick()`; repoint `score_types/pick_type` and
@@ -279,8 +380,12 @@ pure `find_table` (core) + new `io/workbook.py`
 `table_detect._is_empty` with `io.normalize.is_empty`. Move fold-to-class
 into one `core` function used by both `_row.normalize_doc_type` and
 `convert_classified`. Update `README.md`/`INTEGRATION.md` to match reality
-(remove references to nonexistent `core/scoring.py` / `config/keywords.py`
-/ `config/patterns.py`). Files: `table_detect.py`, +`io/workbook.py`,
+— do not just delete the stale references but **point them at the real new
+locations**: the scoring engine at `core/scoring.py` (created in Phase 3),
+the fold-to-class function at its new `core` home (this phase), and the
+scorers at `core/type_scoring.py` / `core/discipline_scoring.py`. (Stale
+refs today: `core/scoring.py:fold_to_class`, `config/keywords.py`,
+`config/patterns.py`.) Files: `table_detect.py`, +`io/workbook.py`,
 `convert_classified.py`, `_row.py`, docs.
 
 ### Behavior-change risks & guards
