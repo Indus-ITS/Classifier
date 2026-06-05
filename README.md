@@ -1,37 +1,48 @@
 # Document Classifier
 
-Classifies engineering deliverable rows from project schedule sheets into
-three classes — **drawing**, **sheet**, or **document** — by reading a
-canonical 28-column CSV, filling `doc_type` from keyword scoring and
-`type` from a lookup built from labelled reference indices.
+Classifies engineering deliverable rows into three classes — **drawing**,
+**sheet**, or **document** — plus a 3-letter `type` code and a
+`discipline_id`, all inferred from the row's `title` via hand-maintained
+keyword rules. Works on CSV exports, a documents-table snapshot, or a live
+PostgreSQL table.
 
 ## Quick start
 
 ```bash
 pip install -e .
 
-classify
+# Process a documents-table export (the primary flow):
+update-snapshot --input path/to/documents_export.csv
 ```
 
-`classify` reads `input/To be classified/document.csv`, fills `doc_type`
-(normalized to `drawing`/`sheet`/`document`) and `type` (filled only when
-empty, via the lookup built from `input/classified_csv/`), and writes
-[output/classified.csv](output/classified.csv). The output preserves the
-input's 28-column schema, column order, and row count.
+`update-snapshot` fills `doc_type` (all rows), `type` (non-`feed` rows), and
+`discipline_id` (missing/invalid rows, validated against
+`input/disciplines.csv`) from each row's `title`, writing
+`output/documents_updated.csv` + `output/documents_changes.csv`.
+
+`classify` is the schema-fixed CSV variant: given a 28-column CSV (see
+`io/schema.py`) it fills `doc_type` and `type` from the `title` via the keyword
+rules and writes [output/classified.csv](output/classified.csv), preserving the
+28-column schema, order, and row count. (The old sample input was removed; pass
+your own 28-column CSV.)
 
 ## Console scripts
 
 | Command              | What it does |
 |----------------------|--------------|
-| `classify`           | Read `input/To be classified/document.csv`, fill `doc_type` (normalized to `drawing`/`sheet`/`document`) and `type` (filled only when empty, via the lookup built from `input/classified_csv/`), write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
+| `classify`           | Given a 28-column CSV, fill `doc_type` (normalized to `drawing`/`sheet`/`document`) and `type` from the `title` via the keyword rules; write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
 | `classify-rds`       | Same classifier logic against a PostgreSQL RDS `documents` table. Selects rows where any of `doc_type` / `type` / `discipline_id` is NULL/empty, fills them from the row `title`, UPDATEs in place. Reads DSN from `PGHOST` / `PGDATABASE` / `PGUSER` / `PGPASSWORD` / `PGPORT` env vars. See [Pipeline use](#pipeline-use-rds) for the in-process API. |
-| `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
-| `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
-| `learn-type-keywords` | Mine `(title, type)` pairs from `input/classified_csv/` and regenerate `src/classifier/config/type_keywords.py` (the learned phrase→type rules). |
-| `learn-discipline-keywords` | Mine `(title, discipline_id)` pairs from `input/classified_csv/` and regenerate `src/classifier/config/discipline_keywords.py`. Trains directly on the labelled ids (validated against `input/disciplines.csv`); no fold. |
-| `learn-type-discipline` | Build the `type → discipline_id` majority hint map (`src/classifier/config/type_to_discipline.py`) that nudges discipline scoring. |
+| `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV. Dormant — its `input/classified/` source is not currently populated. |
+| `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). Dormant — its input source is not currently populated. |
 | `learn-sheet-patterns` | Diagnostic: scan workbooks for table/sheet structure patterns. |
+| `update-snapshot`    | Process a documents-table export (DB snapshot CSV): recompute `doc_type` for all rows, recompute `type` for non-feed rows (feed rows kept), fill `discipline_id` where missing or now-invalid (validated against `input/disciplines.csv`). Writes `output/documents_updated.csv` + `output/documents_changes.csv`. Run: `update-snapshot --input <snapshot.csv>`. |
 | `sort-files`         | Consume `output/classified.csv`, match source files by `customer_ref`, copy one preferred file per logical document into `dest/<Drawings\|Documents\|Sheets>/` (pdf preferred for drawing/document, xlsx preferred for sheet), route unmatched files to `Unmatched/`, and write `route-report.csv`. Supports `--dry-run`. |
+
+> **No training step.** The rule configs (`type_keywords.py`, `type_overrides.py`,
+> `discipline_keywords.py`, `type_to_discipline.py`, `type_enum.py`) are now
+> **hand-maintained** — they are not regenerated from data. The former
+> `learn-type-keywords` / `learn-discipline-keywords` / `learn-type-discipline`
+> tools have been retired.
 
 ## sort-files router
 
@@ -64,21 +75,18 @@ classifier/
 ├── README.md
 │
 ├── src/classifier/                   # the package
-│   ├── config/                       # buckets, generated keyword/type/discipline tables, schema, enum
+│   ├── config/                       # buckets, hand-maintained keyword/type/discipline rules, schema, enum
 │   ├── core/                         # pure logic: scoring engine, classify_record, folding, table_detect
 │   ├── pipeline/                     # orchestration: run loop, stats, classify_titles, classify_rds
-│   ├── io/                           # readers/writers: csv_io, rds, workbook, memory, classified_index, normalize, schema
+│   ├── io/                           # readers/writers: csv_io, rds, workbook, memory, disciplines, normalize, schema
 │   ├── routing/                      # sort-files router: cust_ref, dedup, plan, execute, report
-│   ├── cli/                          # console entry points (classify, classify-rds, sort-files)
-│   └── tools/                        # offline commands: convert-classified, build-type-enum, learners
+│   ├── cli/                          # console entry points (classify, classify-rds, update-snapshot, sort-files)
+│   └── tools/                        # offline diagnostics (convert-classified, build-type-enum — dormant)
 │
 ├── input/
-│   ├── To be classified/             # document.csv to classify
-│   ├── classified/                   # labelled reference indices (xls/xlsx source)
-│   └── classified_csv/               # converted 28-column CSVs (commit-tracked)
+│   └── disciplines.csv               # disciplines table export (discipline_id FK target)
 │
-└── output/
-    └── classified.csv                # ← MAIN classifier output
+└── output/                           # generated CSVs (documents_updated.csv, documents_changes.csv, ...)
 ```
 
 <a id="pipeline-use-rds"></a>
@@ -118,16 +126,20 @@ For large tables, add partial indexes on the three filtered columns
 
 ## How to iterate on accuracy
 
-`type_keywords.py` and `discipline_keywords.py` are **generated** — don't edit
-them by hand. To improve accuracy:
+The rule configs are **hand-maintained** (training retired) — edit them
+directly:
 
-1. **Add labelled examples** to `input/classified_csv/` (more `(title, type)`
-   and `(title, discipline_id)` rows), then re-run `learn-type-keywords` and
-   `learn-discipline-keywords`.
-2. **Force a specific type** deterministically: add the title phrase to
-   `HARD_OVERRIDES` (or suppress a false hit with `NEGATIVE_KEYWORDS`) in
-   [src/classifier/config/type_overrides.py](src/classifier/config/type_overrides.py).
-3. Re-run `classify` and inspect `output/classified.csv`.
+1. **Type phrases:** add/adjust `(phrase, weight)` entries in
+   [config/type_keywords.py](src/classifier/config/type_keywords.py) under the
+   target type code, or force/suppress deterministically via `HARD_OVERRIDES` /
+   `NEGATIVE_KEYWORDS` in
+   [config/type_overrides.py](src/classifier/config/type_overrides.py).
+2. **Discipline phrases:** add/adjust entries in
+   [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py)
+   — keyed by a `discipline_id` that **must exist** in
+   [input/disciplines.csv](input/disciplines.csv) — and the `type → discipline`
+   hints in [config/type_to_discipline.py](src/classifier/config/type_to_discipline.py).
+3. Re-run the relevant CLI (`classify` / `update-snapshot`) and inspect the output.
 
 A type fires only when its top phrase score clears the margin/floor thresholds
 in [`core/scoring.py`](src/classifier/core/scoring.py); otherwise `type` stays
@@ -151,10 +163,10 @@ phrase to `HARD_OVERRIDES` in
 | `BUCKETS` | [config/buckets.py](src/classifier/config/buckets.py) | The 10 internal content buckets (don't reorder) |
 | `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 3-class fold (Drawings, Sheets, or Documents) |
 | `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter Type code → bucket |
-| `TYPE_KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | **Generated** `{type: ((phrase, weight), ...)}` — learned phrase→type scoring |
+| `TYPE_KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | Hand-maintained `{type: ((phrase, weight), ...)}` — phrase→type scoring |
 | `HARD_OVERRIDES` / `NEGATIVE_KEYWORDS` | [config/type_overrides.py](src/classifier/config/type_overrides.py) | Hand-maintained deterministic type forcing / suppression |
-| `DISCIPLINE_KEYWORDS` | [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py) | **Generated** `{discipline_id: ((phrase, weight), ...)}` — learned per-discipline scoring (fold-free) |
-| `TYPE_TO_DISCIPLINE` | [config/type_to_discipline.py](src/classifier/config/type_to_discipline.py) | **Generated** `{type: discipline_id}` hint that nudges discipline scoring |
+| `DISCIPLINE_KEYWORDS` | [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py) | Hand-maintained `{discipline_id: ((phrase, weight), ...)}` — per-discipline scoring (ids must be in `input/disciplines.csv`) |
+| `TYPE_TO_DISCIPLINE` | [config/type_to_discipline.py](src/classifier/config/type_to_discipline.py) | Hand-maintained `{type: discipline_id}` hint that nudges discipline scoring |
 
 ## Bucket → Class mapping
 
