@@ -1,181 +1,120 @@
-# Curated, fold-free discipline classification — design
+# Fold-free discipline classification (label-driven) — design
 
 **Date:** 2026-06-05
 **Status:** Approved (design).
-**Scope:** Replace the client→DEST discipline *fold* + label-learned discipline
-rules with **curated keyword rules mapped directly to `disciplines.csv` ids**.
-Type classification is unchanged. The runtime scoring engine is unchanged.
+**Pivot note:** An earlier draft of this spec proposed hand-curated keyword
+rules because the discipline labels were assumed unreliable. The user has
+since confirmed the training discipline labels in `input/classified_csv/`
+**are trustworthy** and **are already `disciplines.csv` ids**. This spec is
+rewritten accordingly: keep the existing label-learning tools, just **remove
+the client→DEST fold** and train directly on the labelled `discipline_id`.
+
+**Scope:** Discipline learning only. Type classification, the scoring engine,
+and the schema are unchanged.
 
 ## Problem
 
-`documents.discipline_id` is an FK into the DEST disciplines table
-(`input/disciplines.csv`). Discipline rules were learned from the
-`discipline_id` column of the labelled CSVs in `input/classified_csv/`, then
-remapped through `input/discipline_fold.csv` (client-id → DEST-id).
-
-Two issues make this "not up to par":
-1. **The labels are unreliable.** The client id-space reuses `disciplines.csv`
-   integers with *different meaning* — e.g. label `13` is "QA/QC" in
-   `disciplines.csv` but those 134 rows are Piping (VALVE LIST / MTO FOR
-   PIPES); label `4` is "Engineering Management" but the rows are Electrical;
-   label `10` is "Project Management" but the rows are Mechanical.
-2. **The fold collapses granularity** (HVAC/Telecom/Rotary/Static → a coarse
-   7-bucket set), so finer `disciplines.csv` disciplines can never be emitted.
+Discipline rules were learned from the `discipline_id` column of the labelled
+CSVs, then remapped through `input/discipline_fold.csv` (client-id → DEST-id),
+which (a) collapsed the taxonomy into a coarse 7-bucket set and (b) "corrected"
+labels the user considers authoritative. The fold is unwanted.
 
 ## Decision
 
-- **Drop the fold and stop trusting the client discipline labels** for
-  discipline classification.
-- **Hand-author discipline keyword rules keyed to `disciplines.csv` ids**,
-  using obvious title signals + the document `type` hint ("obvious factors").
-- **Full `disciplines.csv` taxonomy, only where supported:** emit rules only
-  for disciplines we can identify; unidentifiable rows leave `discipline_id`
-  NULL (conservative).
+- **Delete the fold.** Train discipline keyword rules keyed **directly** by the
+  labelled `discipline_id`, treating each value as a `disciplines.csv` id.
+- **Validate against `disciplines.csv`.** A labelled id not present in
+  `disciplines.csv` is dropped as an orphan (keeps `documents.discipline_id`
+  FK-safe). Today all labelled ids (1, 4, 7, 10, 13, 17, 20, 23, 25, 26) exist
+  in `disciplines.csv`, so none are dropped.
+- **Full taxonomy, only where supported:** a discipline gets rules only when it
+  has ≥ `MIN_CLASS_DOCS` labelled examples (existing threshold); others emit no
+  rules and simply never fire (discipline stays NULL). This is the natural
+  outcome of training on the labels present.
 
-## Architecture
+The runtime is untouched — `core/discipline_scoring.py` consumes the two
+generated config dicts exactly as before; they now contain the real
+`disciplines.csv` ids instead of folded buckets.
 
-The runtime is untouched. Only the *provenance* of the two generated config
-dicts changes — from "learned + folded" to "compiled from curated CSVs".
+## Changes
 
-```
-  input/discipline_keywords.csv   (curated: code, phrase, weight)
-  input/type_discipline.csv       (curated: type, code)
-            │
-            ▼  build-discipline-config   (new tool; validates + canonicalizes)
-  src/classifier/config/discipline_keywords.py   {disc_id: ((phrase, weight), ...)}
-  src/classifier/config/type_to_discipline.py    {TYPE: disc_id}
-            │
-            ▼  (unchanged at runtime)
-  core/discipline_scoring.py  ->  score()/pick()  ->  fill_discipline()
-```
+### `src/classifier/tools/learn_discipline_keywords.py`
+- Remove `DISCIPLINE_FOLD_CSV`, `_load_fold`, and all fold usage.
+- Rename/repurpose `_load_valid_dest_ids` → `_load_valid_discipline_ids`
+  (loads the id set from `input/disciplines.csv`). Keep `_parse_discipline`.
+- `_collect_rows(valid_ids)`: for each labelled row, parse `discipline_id`;
+  if the id is **not** in `valid_ids`, count it as an orphan and skip;
+  otherwise emit `(discipline_id, title, source_path)` using the id **as-is**
+  (no fold).
+- `main`: load valid ids; collect rows; learn; render. Update the prints to
+  drop fold/DEST-bucket language (report: rows kept, disciplines trained,
+  disciplines untrained `< MIN_CLASS_DOCS`, orphan ids not in
+  `disciplines.csv`).
+- Rewrite the module docstring (no fold; trains directly on labelled ids
+  validated against `disciplines.csv`).
 
-`disciplines.csv` remains the source of valid ids; the build tool resolves the
-human-friendly `code` (e.g. `PIP`, `ELE`) to its id and validates membership,
-so emitted ids are FK-safe by construction.
+### `src/classifier/tools/learn_type_discipline.py`
+- Drop the fold: import `_load_valid_discipline_ids`, `_parse_discipline`,
+  `DISCIPLINES_TABLE_CSV` from `learn_discipline_keywords` (no `_load_fold`,
+  no `DISCIPLINE_FOLD_CSV`).
+- `_collect_pairs(valid_ids)`: count `discipline_id` per type using the raw
+  id, skipping ids not in `valid_ids` (orphans). The majority/min-occurrence
+  logic and emitted shape are unchanged (`TYPE_TO_DISCIPLINE: {TYPE: id}`).
+- `main`: load valid ids instead of the fold; update prints.
 
-## Components
+### `input/discipline_fold.csv`
+- Deleted.
 
-### Removed
-- `input/discipline_fold.csv` — deleted.
-- `src/classifier/tools/learn_discipline_keywords.py` — removed.
-- `src/classifier/tools/learn_type_discipline.py` — removed.
-- Console scripts `learn-discipline-keywords` and `learn-type-discipline` —
-  removed from `pyproject.toml`.
+### Stale-config wiring
+**No change needed.** Both discipline configs are still learned from
+`input/classified_csv/`, so the existing freshness check (type_keywords,
+discipline_keywords, type_to_discipline all vs `input/classified_csv/`,
+naming the three `learn-*` tools) remains correct.
 
-### New curated inputs
-`input/discipline_keywords.csv` — columns `code,phrase,weight`:
-- `code`: a `disciplines.csv` `code` value (`CIV`, `ELE`, `INC`, `MEC`,
-  `PIP`, `PRO`, `HVAC`, `TEL`, …).
-- `phrase`: a human phrase; the build tool canonicalizes it (so it matches
-  runtime tokens).
-- `weight`: integer 1–5 (5 = strong single-phrase signal).
-
-`input/type_discipline.csv` — columns `type,code`:
-- `type`: a 3-letter code in `KNOWN_TYPES` (e.g. `ISO`, `PID`, `PFD`).
-- `code`: a `disciplines.csv` `code`.
-
-### New build tool — `src/classifier/tools/build_discipline_config.py`
-Console script `build-discipline-config`. Steps:
-1. Load `input/disciplines.csv` → `code→id` (codes uppercased) and the valid
-   id set. Fail if the file or `id`/`code` columns are missing.
-2. Read `input/discipline_keywords.csv`. For each row: uppercase+strip `code`;
-   error (with the offending value) if it is not a known code. Run `phrase`
-   through `classifier.core.scoring.canonicalize_title`; the emitted phrase is
-   the canonical tokens joined by a single space. If canonicalization yields
-   an empty token list, error (the phrase can never match). Parse `weight` as
-   a number in 1–5 (error otherwise). Accumulate per resolved id.
-3. Within each id, sort rules by weight descending then phrase (so the
-   highest-weight phrase consumes its span first under the engine's per-key
-   span-consumption rule). Emit
-   `DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]]` to
-   `src/classifier/config/discipline_keywords.py`. (Only also emit
-   `UNTRAINED_DISCIPLINES` if a grep shows something still imports it;
-   otherwise omit it — no dead output.)
-4. Read `input/type_discipline.csv`. Validate `type` ∈ `KNOWN_TYPES` and
-   `code` is known. On a duplicate `type`, error (ambiguous). Emit
-   `TYPE_TO_DISCIPLINE: dict[str, int]` to
-   `src/classifier/config/type_to_discipline.py`.
-5. Both generated files carry a "Generated by `build-discipline-config`. Do
-   not edit by hand." header.
-
-### Unchanged
-- `core/scoring.py`, `core/discipline_scoring.py`, `core/classify.py`
-  (`fill_discipline`, `TYPE_HINT_BONUS`) — they consume the two dicts as-is.
-- `learn-type-keywords`, `build-type-enum`, `convert-classified` — unchanged.
-- The labelled CSVs in `input/classified_csv/` stay (used for **type**
-  learning and as the convert source). Their `discipline_id` column is simply
-  no longer consumed.
-
-### Stale-config wiring (small change)
-The generated discipline configs are now sourced from the curated CSVs, not
-`input/classified_csv/`. Update the freshness check accordingly:
-- `type_keywords.py` stale vs `input/classified_csv/` (unchanged).
-- `discipline_keywords.py` stale vs `input/discipline_keywords.csv`.
-- `type_to_discipline.py` stale vs `input/type_discipline.csv`.
-- The warning names `build-discipline-config` as the tool to re-run.
-
-Touch points: `pipeline/classify_rds.py` (`_GENERATED_CONFIGS` / the
-`stale_configs` calls) and `cli/classify.py` if it warns on these. Use the
-existing `pipeline/staleness.stale_configs(configs, source)` helper, called
-once per source.
-
-## Initial seed (authored during implementation, you refine after)
-
-Disciplines with clear title/type signals to seed first (others stay NULL
-until you add rules):
-
-| code | id | example phrases |
-|---|---|---|
-| PIP | 8 | PIPING, VALVE, PIPE, ISOMETRIC, PIPELINE |
-| ELE | 3 | ELECTRICAL, POWER, CABLE, EARTHING, LIGHTING |
-| INC | 6 | INSTRUMENT, ICSS, TRANSMITTER, CONTROL VALVE, F&G |
-| CIV | 1 | CIVIL, FOUNDATION, STRUCTURAL, CONCRETE, GRADING |
-| MEC | 7 | MECHANICAL, PUMP, VESSEL, TANK, EQUIPMENT, EXCHANGER |
-| PRO | 11 | PROCESS, P&ID, PFD, HEAT BALANCE, CORROSION |
-| HVAC | 39 | HVAC, VENTILATION, AIR CONDITIONING |
-| TEL | 37 | TELECOM, COMMUNICATION, PAGING |
-
-Type→discipline seed: `ISO→PIP`, `PID→PRO`, `PFD→PRO`, plus any other type
-whose discipline is unambiguous from its definition.
+### `pyproject.toml`
+**No change.** The `learn-discipline-keywords` and `learn-type-discipline`
+console scripts are kept (the tools remain, just fold-free).
 
 ## Regeneration (deliberate, scoped behavior change)
 
-This intentionally changes discipline output. Two committed artifacts must be
-regenerated, each with a scope check:
-1. **Golden** `tests/golden/classified.csv`: re-run `classify`, copy output to
+1. Run `learn-discipline-keywords` and `learn-type-discipline` → regenerate
+   `config/discipline_keywords.py` and `config/type_to_discipline.py` with real
+   `disciplines.csv` ids.
+2. **Golden** `tests/golden/classified.csv`: re-run `classify`, copy output to
    the golden. **Verify only the `discipline_id` column changed** vs the prior
    golden (doc_type/type/other columns identical).
-2. **Scoring baseline** `tests/core/scoring_baseline.json`: delete and
-   re-generate via the snapshot test. **Verify the `type`/`type_conf` and
-   `cr_type`/`cr_doc_type` fields are byte-identical** to the prior baseline
-   (only `disc`/`disc_conf`/`cr_disc` change), proving the change is scoped to
-   discipline.
+3. **Scoring baseline** `tests/core/scoring_baseline.json`: delete and
+   regenerate via the snapshot test. **Verify `type`/`type_conf`/`cr_type`/
+   `cr_doc_type` are byte-identical** to the prior baseline (only `disc`/
+   `disc_conf`/`cr_disc` change), proving the change is scoped to discipline.
 
 ## Testing
 
-- `build_discipline_config` unit tests (tmp CSVs): code→id resolution; unknown
-  code → error; phrase canonicalization (e.g. `p&id`→`P&ID`); empty-phrase →
-  error; weight bounds; duplicate type → error; emitted dict shapes; FK-safety
-  (all ids ∈ disciplines.csv).
-- Discipline-scoring behavior on representative titles using the seeded rules:
-  "VALVE LIST"→Piping(8), "MTO FOR ELECTRICAL"→Electrical(3), "FOUNDATION
-  LAYOUT"→Civil(1), "P&ID AREA 01"→Process(11), "HVAC DUCT LAYOUT"→HVAC(39).
-  (These assert ids from `disciplines.csv`, locking the new behavior.)
-- Regenerated golden + baseline serve as the regression locks going forward.
+- `learn_discipline_keywords` unit tests (tmp CSVs): rows with a valid
+  `disciplines.csv` id are trained under that id (no remap); an id absent from
+  `disciplines.csv` is counted as an orphan and dropped; `< MIN_CLASS_DOCS`
+  disciplines are reported untrained. Confirm NO reference to a fold remains
+  (no `discipline_fold` import; the function signatures take `valid_ids`).
+- `learn_type_discipline` unit test: a type whose labelled rows are a clear
+  majority of one valid id emits that id; ids not in `disciplines.csv` are
+  skipped.
+- After regeneration, the new `config/discipline_keywords.py` keys are a
+  subset of `disciplines.csv` ids (FK-safety assertion).
+- Regenerated golden + baseline are the going-forward regression locks.
 
 ## Docs
 
-Rewrite the discipline sections of `INTEGRATION.md` and `README.md`:
-- Remove the fold narrative and the `learn-discipline-keywords` /
-  `learn-type-discipline` instructions.
-- Describe the curated flow: edit `input/discipline_keywords.csv` /
-  `input/type_discipline.csv` → run `build-discipline-config` → commit the
-  regenerated configs. Document that discipline is keyword/type-driven to the
-  full `disciplines.csv` taxonomy and stays NULL when no rule fires.
+Update `INTEGRATION.md` and `README.md` discipline sections:
+- Remove the fold narrative and `discipline_fold.csv` references.
+- Describe: discipline rules are learned directly from the labelled
+  `discipline_id` (which are `disciplines.csv` ids), validated against
+  `disciplines.csv`; ids not in the table are dropped; disciplines with too few
+  examples emit no rules and stay NULL. To improve coverage, add labelled rows
+  (or a new discipline to `disciplines.csv`) and re-run the two learners.
 
 ## Out of scope
 
 - Type classification, `type_keywords`, the scoring engine, the schema.
-- The RDS/CSV/router execution pipelines (they consume the configs unchanged).
-- Re-deriving or relabelling the client training data (its discipline column
-  is simply dropped from use).
+- The RDS/CSV/router pipelines (consume the configs unchanged).
+- Curated/hand-authored discipline keyword banks (dropped with the pivot — the
+  trusted labels are the source of truth).
