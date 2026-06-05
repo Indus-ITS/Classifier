@@ -35,7 +35,7 @@ BUCKET_TO_CLASS: dict = {
     "Specifications":   "Documents",
     "Calculations":     "Documents",
     "Reports":          "Documents",
-    "Lists_MTOs_BOMs":  "Documents",
+    "Lists_MTOs_BOMs":  "Sheets",
     "Procedures_Plans": "Documents",
     "CRS":              "Documents",
     "Documents":        "Documents",
