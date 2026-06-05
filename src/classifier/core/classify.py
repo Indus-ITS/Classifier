@@ -9,7 +9,8 @@ Each helper takes ``(existing_value, title)`` and returns ``(value, reason)``.
 """
 from __future__ import annotations
 
-from classifier.config.buckets import BUCKET_TO_CLASS, TYPE_TO_BUCKET
+from classifier.config.buckets import TYPE_TO_BUCKET
+from classifier.core.folding import doc_type_for_bucket
 from classifier.core.discipline_scoring import pick_discipline_with_overrides
 from classifier.core.type_scoring import pick_type_with_overrides
 from classifier.core.record import Record, FieldResult, ClassificationResult
@@ -34,9 +35,8 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
     if pick["confidence"] == "high":
         bucket = TYPE_TO_BUCKET.get(pick["type"])
         if bucket is not None:
-            folded = BUCKET_TO_CLASS[bucket]
             reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
-            cls = {"Drawings": "drawing", "Sheets": "sheet"}.get(folded, "document")
+            cls = doc_type_for_bucket(bucket)
             return cls, reason_tag
     return "document", "defaulted"
 

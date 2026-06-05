@@ -18,7 +18,8 @@ from typing import Iterable, Sequence
 
 import pandas as pd
 
-from classifier.config.buckets import BUCKET_TO_CLASS, TYPE_TO_BUCKET
+from classifier.config.buckets import TYPE_TO_BUCKET
+from classifier.core.folding import doc_type_for_bucket
 from classifier.io.normalize import is_empty, normalize_header_token, slugify_sheet
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
 
@@ -113,8 +114,7 @@ def _doc_type_for(section_label: str, type_code: str) -> str:
     bucket = TYPE_TO_BUCKET.get(code)
     if bucket is None:
         return ""
-    folded = BUCKET_TO_CLASS[bucket]
-    return {"Drawings": "drawing", "Sheets": "sheet"}.get(folded, "document")
+    return doc_type_for_bucket(bucket)
 
 
 def xlsx_to_rows(workbook_path: Path) -> Iterable[tuple[str, list[dict[str, str]]]]:
