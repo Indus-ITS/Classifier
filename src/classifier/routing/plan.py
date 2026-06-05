@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from classifier.routing.dedup import pick_winner, CANDIDATE_EXTS
+from classifier.routing.dedup import pick_winner
 
 BUCKET_FOR_DOCTYPE = {"drawing": "Drawings", "document": "Documents",
                       "sheet": "Sheets"}
