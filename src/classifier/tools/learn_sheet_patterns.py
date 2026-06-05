@@ -17,7 +17,7 @@ import os
 import re
 from collections import Counter, defaultdict
 
-from classifier.core.table_detect import file_has_table
+from classifier.io.workbook import file_has_table
 
 csv.field_size_limit(10 ** 7)
 
