@@ -16,6 +16,7 @@ convert-classified  = "classifier.tools.convert_classified:main"
 build-type-enum     = "classifier.tools.build_type_enum:main"
 learn-sheet-patterns      = "classifier.tools.learn_sheet_patterns:main"
 sort-files          = "classifier.cli.sort:main"
+update-snapshot     = "classifier.cli.update_snapshot:main"
 
 [build-system]
 requires = ["setuptools>=61"]
