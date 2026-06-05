@@ -32,7 +32,8 @@ import pandas as pd
 
 from classifier.io.normalize import is_empty
 from classifier.io.schema import TARGET_COLUMNS, validate_schema
-from classifier.pipeline._row import fill_discipline, fill_type, normalize_doc_type
+from classifier.core.record import Record
+from classifier.core.classify import classify_record
 
 INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
@@ -72,16 +73,20 @@ def main() -> None:
             before = out["doc_type"].strip().lower() if not is_empty(out["doc_type"]) else ""
             doc_type_before[before or "(empty)"] += 1
 
-            new_doc_type, dt_reason = normalize_doc_type(out["doc_type"], out["title"])
+            rec = Record(title=out["title"], doc_type=out["doc_type"],
+                         type=out["type"], discipline_id=out["discipline_id"])
+            res = classify_record(rec)
+
+            new_doc_type, dt_reason = res.doc_type.value, res.doc_type.reason
             out["doc_type"] = new_doc_type
             doc_type_after[new_doc_type] += 1
             doc_type_reason[dt_reason] += 1
 
-            new_type, t_reason = fill_type(out["type"], out["title"])
+            new_type, t_reason = res.type.value, res.type.reason
             out["type"] = new_type
             type_reason[t_reason] += 1
 
-            new_disc, d_reason = fill_discipline(out["discipline_id"], out["title"], type_hint=new_type)
+            new_disc, d_reason = res.discipline_id.value, res.discipline_id.reason
             out["discipline_id"] = new_disc
             disc_reason[d_reason] += 1
 

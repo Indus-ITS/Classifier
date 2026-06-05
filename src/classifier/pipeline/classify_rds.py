@@ -12,9 +12,8 @@ from pathlib import Path
 from typing import Callable
 
 from classifier.io.rds import iter_unclassified, update_row
-from classifier.pipeline._row import (
-    fill_discipline, fill_type, normalize_doc_type,
-)
+from classifier.core.record import Record
+from classifier.core.classify import classify_record
 
 log = logging.getLogger("classifier.rds")
 
@@ -96,12 +95,12 @@ def classify_from_rds(
             cur_disc_s     = "" if cur_disc     is None else str(cur_disc)
             title_s        = "" if title        is None else str(title)
 
-            new_doc_type, dt_reason = normalize_doc_type(cur_doc_type_s, title_s)
-            new_type,     t_reason  = fill_type(cur_type_s, title_s)
-            # Use the effective type (whether existing or just inferred) as
-            # the discipline scorer's hint -- types carry strong discipline
-            # signal (e.g. ISO -> Piping, PFD -> Process).
-            new_disc,     d_reason  = fill_discipline(cur_disc_s, title_s, type_hint=new_type)
+            rec = Record(title=title_s, doc_type=cur_doc_type_s,
+                         type=cur_type_s, discipline_id=cur_disc_s, handle=pk_value)
+            res = classify_record(rec)
+            new_doc_type, dt_reason = res.doc_type.value, res.doc_type.reason
+            new_type,     t_reason  = res.type.value, res.type.reason
+            new_disc,     d_reason  = res.discipline_id.value, res.discipline_id.reason
 
             stats["doc_type"][dt_reason]      += 1
             stats["type"][t_reason]           += 1

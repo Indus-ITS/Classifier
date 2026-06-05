@@ -12,9 +12,8 @@ from __future__ import annotations
 from typing import Iterable, Mapping
 
 from classifier.io.normalize import is_empty
-from classifier.pipeline._row import (
-    fill_discipline, fill_type, normalize_doc_type,
-)
+from classifier.core.record import Record
+from classifier.core.classify import classify_record
 
 
 def classify_titles(rows: Iterable[Mapping],
@@ -57,31 +56,30 @@ def classify_titles(rows: Iterable[Mapping],
     out: list[dict] = []
     for row in rows:
         title = "" if row.get("title") is None else str(row["title"])
-
         cur_doc_type = row.get("doc_type")
         cur_type     = row.get("type")
         cur_disc     = row.get("discipline_id")
 
-        cur_doc_type_s = "" if cur_doc_type is None else str(cur_doc_type)
-        cur_type_s     = "" if cur_type     is None else str(cur_type)
-        cur_disc_s     = "" if cur_disc     is None or is_empty(cur_disc) else str(cur_disc)
+        rec = Record(
+            title=title,
+            doc_type="" if cur_doc_type is None else str(cur_doc_type),
+            type="" if cur_type is None else str(cur_type),
+            discipline_id="" if cur_disc is None or is_empty(cur_disc) else str(cur_disc),
+        )
+        res = classify_record(rec)
 
-        new_doc_type, dt_reason = normalize_doc_type(cur_doc_type_s, title)
-        new_type,     t_reason  = fill_type(cur_type_s, title)
-        new_disc,     d_reason  = fill_discipline(cur_disc_s, title, type_hint=new_type)
-
-        disc_value: int | None = int(new_disc) if new_disc else None
+        disc_value = int(res.discipline_id.value) if res.discipline_id.value else None
 
         if include_reasons:
             out.append({
-                "doc_type":      (new_doc_type, dt_reason),
-                "type":          (new_type, t_reason),
-                "discipline_id": (disc_value, d_reason),
+                "doc_type":      (res.doc_type.value, res.doc_type.reason),
+                "type":          (res.type.value, res.type.reason),
+                "discipline_id": (disc_value, res.discipline_id.reason),
             })
         else:
             out.append({
-                "doc_type":      new_doc_type,
-                "type":          new_type,
+                "doc_type":      res.doc_type.value,
+                "type":          res.type.value,
                 "discipline_id": disc_value,
             })
     return out
