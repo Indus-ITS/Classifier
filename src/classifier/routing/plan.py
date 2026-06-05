@@ -31,7 +31,7 @@ class Plan:
     skipped_no_preferred_format: tuple[str, ...]
 
 
-def build_plan(groups, index, dest_dir: Path) -> Plan:
+def build_plan(groups, index, dest_dir: Path, on_duplicate=None) -> Plan:
     """Per group: resolve its cust_ref -> doc_type from the index, pick the
     class-aware winner, and route it to dest_dir/bucket/winner.name.
 
