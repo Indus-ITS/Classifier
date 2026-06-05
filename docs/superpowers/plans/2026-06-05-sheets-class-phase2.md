@@ -35,7 +35,7 @@
 **Files:**
 - Modify: `src/classifier/config/buckets.py:31-42` (`BUCKET_TO_CLASS`)
 - Create: `tests/config/__init__.py`, `tests/config/test_buckets_fold.py`
-
+bucket = {LST, MTO, BOM, IDX, REG, SCH}. 
 - [ ] **Step 1: Create test package file**
 
 Create `tests/config/__init__.py` (empty).
