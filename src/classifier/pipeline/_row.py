@@ -16,6 +16,7 @@ from classifier.io.normalize import is_empty
 
 DRAWING_ALIASES = {"drawing", "drawings", "dwg"}
 DOCUMENT_ALIASES = {"document", "documents", "doc", "docs"}
+SHEET_ALIASES = {"sheet", "sheets"}
 
 
 def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
@@ -24,6 +25,8 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
         v = str(value).strip().lower()
         if v in DRAWING_ALIASES:
             return "drawing", "existing"
+        if v in SHEET_ALIASES:
+            return "sheet", "existing"
         if v in DOCUMENT_ALIASES:
             return "document", "existing"
     pick = pick_type_with_overrides(title)
@@ -32,7 +35,8 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
         if bucket is not None:
             folded = BUCKET_TO_CLASS[bucket]
             reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
-            return ("drawing" if folded == "Drawings" else "document"), reason_tag
+            cls = {"Drawings": "drawing", "Sheets": "sheet"}.get(folded, "document")
+            return cls, reason_tag
     return "document", "defaulted"
 
 
