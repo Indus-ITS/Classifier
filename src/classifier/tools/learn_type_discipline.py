@@ -1,8 +1,8 @@
-"""Generate ``classifier.config.type_to_discipline`` from labeled CSVs.
+"""Generate ``classifier.config.type_to_discipline`` from labelled CSVs.
 
 For each known document type (3-letter code), this tool counts how many
-labelled rows of that type fell into each DEST discipline (after applying
-the client -> DEST fold). When a single DEST discipline accounts for at
+labelled rows of that type carry each discipline_id (validated against
+``input/disciplines.csv``). When a single discipline accounts for at
 least ``MAJORITY_FLOOR`` of a type's labelled rows, the type is emitted
 as a hint that boosts that discipline's score at classify time.
 
@@ -25,8 +25,8 @@ import pandas as pd
 from classifier.config.type_enum import KNOWN_TYPES
 from classifier.io.normalize import is_empty
 from classifier.tools.learn_discipline_keywords import (
-    DISCIPLINE_FOLD_CSV, DISCIPLINES_TABLE_CSV,
-    _load_fold, _load_valid_dest_ids, _parse_discipline,
+    DISCIPLINES_TABLE_CSV,
+    _load_valid_discipline_ids, _parse_discipline,
 )
 
 CSV_ROOT = Path("input/classified_csv")
@@ -36,10 +36,10 @@ MAJORITY_FLOOR: float = 0.70
 MIN_TYPE_OCCURRENCES: int = 4
 
 
-def _collect_pairs(fold: dict[int, int]
+def _collect_pairs(valid_ids: frozenset[int]
                    ) -> tuple[dict[str, Counter[int]], Counter[int]]:
-    """Return ``(per_type_counts, orphans)`` where
-    ``per_type_counts[type]`` is a Counter of DEST discipline ids."""
+    """Return ``(per_type_counts, orphans)`` where ``per_type_counts[type]``
+    is a Counter of discipline ids (validated against disciplines.csv)."""
     per_type: dict[str, Counter[int]] = defaultdict(Counter)
     orphans: Counter[int] = Counter()
     for p in sorted(CSV_ROOT.rglob("*.csv"), key=lambda x: str(x).lower()):
@@ -51,14 +51,13 @@ def _collect_pairs(fold: dict[int, int]
             t = str(row["type"]).strip().upper()
             if not t or t not in KNOWN_TYPES:
                 continue
-            client_disc = _parse_discipline(row["discipline_id"])
-            if client_disc is None:
+            disc = _parse_discipline(row["discipline_id"])
+            if disc is None:
                 continue
-            dest_disc = fold.get(client_disc)
-            if dest_disc is None:
-                orphans[client_disc] += 1
+            if disc not in valid_ids:
+                orphans[disc] += 1
                 continue
-            per_type[t][dest_disc] += 1
+            per_type[t][disc] += 1
     return per_type, orphans
 
 
@@ -118,27 +117,25 @@ def render(emitted: dict[str, tuple[int, float, int]],
 def main() -> None:
     if not CSV_ROOT.exists():
         raise SystemExit(f"csv dir not found: {CSV_ROOT}")
-    valid_dest_ids = _load_valid_dest_ids()
-    fold = _load_fold(valid_dest_ids)
-    per_type, orphans = _collect_pairs(fold)
+    valid_ids = _load_valid_discipline_ids()
+    per_type, orphans = _collect_pairs(valid_ids)
     emitted, ambiguous = _decide_mappings(per_type)
     text = render(emitted, ambiguous, CSV_ROOT)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(text, encoding="utf-8", newline="\n")
     print(f"Wrote {OUT_PATH}")
-    print(f"  fold table:        {DISCIPLINE_FOLD_CSV}")
     print(f"  types observed:    {len(per_type)}")
     print(f"  types emitted:     {len(emitted)}")
     print(f"  types ambiguous:   {len(ambiguous)}")
     if orphans:
         orphan_summary = ", ".join(f"{d} ({n})" for d, n in orphans.most_common())
-        print(f"  client IDs dropped (no fold entry):")
+        print(f"  ids dropped (not in disciplines.csv):")
         print(f"    {orphan_summary}")
     if emitted:
         print(f"  sample emissions:")
         for t in sorted(emitted)[:5]:
             d, share, total = emitted[t]
-            print(f"    {t} -> dest_id={d}  ({share:.0%} of {total} rows)")
+            print(f"    {t} -> discipline_id={d}  ({share:.0%} of {total} rows)")
 
 
 if __name__ == "__main__":
