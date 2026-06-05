@@ -42,3 +42,48 @@ def _header_span(row) -> tuple[int, int] | None:
     if best_len >= MIN_HEADER_COLS:
         return best_start, best_len
     return None
+
+
+@dataclass
+class TableHit:
+    header_row: int
+    col_start: int
+    col_width: int
+    n_data_rows: int
+
+
+def _row_fills_span(row, start: int, width: int) -> bool:
+    """True iff a majority of the header's columns are populated in row."""
+    filled = 0
+    for c in range(start, start + width):
+        cell = row[c] if c < len(row) else None
+        if cell is not None and str(cell).strip() != "":
+            filled += 1
+    return filled >= (width + 1) // 2  # strict majority (ceil of half)
+
+
+def find_table(grid) -> TableHit | None:
+    """Return the first qualifying table in the grid, or None.
+
+    A qualifying table is a header row (>= MIN_HEADER_COLS adjacent text
+    cells) followed by >= MIN_DATA_ROWS rows that each keep a majority of
+    those header columns populated. Data rows may be interrupted by blank
+    rows without resetting the count, but blanks do not count as data.
+    """
+    for r, row in enumerate(grid):
+        span = _header_span(row)
+        if span is None:
+            continue
+        start, width = span
+        n_data = 0
+        for below in grid[r + 1:]:
+            if all((below[c] if c < len(below) else None) in (None, "")
+                   for c in range(start, start + width)):
+                continue  # blank row inside/after the table — skip, don't reset
+            if _row_fills_span(below, start, width):
+                n_data += 1
+            else:
+                break  # structure broke; stop counting this header's table
+        if n_data >= MIN_DATA_ROWS:
+            return TableHit(r, start, width, n_data)
+    return None
