@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import Counter
 from pathlib import Path
 from typing import Callable
 
-from classifier.io.rds import iter_unclassified, update_row
-from classifier.core.record import Record
-from classifier.core.classify import classify_record
+from classifier.io.rds import RdsReader, RdsWriter
+from classifier.pipeline.run import run
+from classifier.pipeline.staleness import stale_configs
 
 log = logging.getLogger("classifier.rds")
 
@@ -22,45 +21,23 @@ DISCIPLINE_KEYWORDS_PATH = Path("src/classifier/config/discipline_keywords.py")
 TYPE_TO_DISCIPLINE_PATH = Path("src/classifier/config/type_to_discipline.py")
 CLASSIFIED_CSV_DIR = Path("input/classified_csv")
 
-_GENERATED_CONFIGS: tuple[tuple[Path, str], ...] = (
+_GENERATED_CONFIGS = (
     (TYPE_KEYWORDS_PATH,       "learn-type-keywords"),
     (DISCIPLINE_KEYWORDS_PATH, "learn-discipline-keywords"),
     (TYPE_TO_DISCIPLINE_PATH,  "learn-type-discipline"),
 )
 
 
-def _stale_rule_warnings() -> list[str]:
-    """Return a list of human-readable warnings for stale generated configs."""
-    warnings: list[str] = []
-    if not CLASSIFIED_CSV_DIR.exists():
-        return warnings
-    csv_mtimes = [p.stat().st_mtime for p in CLASSIFIED_CSV_DIR.rglob("*.csv")]
-    if not csv_mtimes:
-        return warnings
-    newest_csv = max(csv_mtimes)
-    for path, tool in _GENERATED_CONFIGS:
-        if path.exists() and newest_csv > path.stat().st_mtime:
-            warnings.append(f"{path.name} is older than training data; run {tool}")
-    return warnings
-
-
-def _empty_stats() -> dict:
+def _stats_to_dict(stats) -> dict:
     return {
-        "rows_scanned": 0,
-        "rows_updated": 0,
-        "rows_skipped": 0,
-        "doc_type":      Counter(),
-        "type":          Counter(),
-        "discipline_id": Counter(),
-        "callback_error": None,
+        "rows_scanned": stats.rows_scanned,
+        "rows_updated": stats.rows_updated,
+        "rows_skipped": stats.rows_skipped,
+        "doc_type": dict(stats.reasons["doc_type"]),
+        "type": dict(stats.reasons["type"]),
+        "discipline_id": dict(stats.reasons["discipline_id"]),
+        "callback_error": stats.callback_error,
     }
-
-
-def _finalize_stats(stats: dict) -> dict:
-    """Convert internal Counters to plain dicts for caller convenience."""
-    for k in ("doc_type", "type", "discipline_id"):
-        stats[k] = dict(stats[k])
-    return stats
 
 
 def classify_from_rds(
@@ -72,86 +49,34 @@ def classify_from_rds(
     fetch_size: int = 1000,
     on_done: Callable[[dict], None] | None = None,
 ) -> dict:
-    """See spec §4. Caller owns the connection lifecycle."""
-    for w in _stale_rule_warnings():
-        log.warning(w)
+    for path, tool in stale_configs(list(_GENERATED_CONFIGS), CLASSIFIED_CSV_DIR):
+        log.warning("%s is older than training data; run %s", path.name, tool)
 
-    stats = _empty_stats()
     log.info("classify_from_rds start: table=%s pk=%s", table, pk)
     start = time.monotonic()
 
-    write_cur = conn.cursor()
-    try:
-        for processed, row in enumerate(
-            iter_unclassified(conn, table=table, pk=pk, fetch_size=fetch_size),
-            start=1,
-        ):
-            pk_value, cur_doc_type, cur_type, cur_disc, title = row
-            stats["rows_scanned"] += 1
+    reader = RdsReader(conn, table=table, pk=pk, fetch_size=fetch_size)
+    writer = RdsWriter(conn, table=table, pk=pk, commit_every=commit_every)
 
-            # Normalise None to "" so the pure helpers always see strings.
-            cur_doc_type_s = "" if cur_doc_type is None else str(cur_doc_type)
-            cur_type_s     = "" if cur_type     is None else str(cur_type)
-            cur_disc_s     = "" if cur_disc     is None else str(cur_disc)
-            title_s        = "" if title        is None else str(title)
+    def _progress(stats) -> None:
+        if stats.rows_scanned % commit_every == 0:
+            elapsed = time.monotonic() - start
+            rate = stats.rows_scanned / elapsed if elapsed > 0 else 0.0
+            log.info("progress: scanned=%d updated=%d elapsed=%.1fs rate=%.1f rows/s",
+                     stats.rows_scanned, stats.rows_updated, elapsed, rate)
 
-            rec = Record(title=title_s, doc_type=cur_doc_type_s,
-                         type=cur_type_s, discipline_id=cur_disc_s, handle=pk_value)
-            res = classify_record(rec)
-            new_doc_type, dt_reason = res.doc_type.value, res.doc_type.reason
-            new_type,     t_reason  = res.type.value, res.type.reason
-            new_disc,     d_reason  = res.discipline_id.value, res.discipline_id.reason
-
-            stats["doc_type"][dt_reason]      += 1
-            stats["type"][t_reason]           += 1
-            stats["discipline_id"][d_reason]  += 1
-
-            writes: dict = {}
-
-            # doc_type: write whenever the normalised value differs from
-            # what's currently stored (handles both empty and alias cases).
-            if new_doc_type != cur_doc_type_s.strip().lower():
-                writes["doc_type"] = new_doc_type
-
-            # type: only when existing was empty AND inference produced a value.
-            if cur_type_s == "" and new_type != "":
-                writes["type"] = new_type
-
-            # discipline_id: only when existing was NULL AND inference hit.
-            if cur_disc is None and new_disc != "":
-                writes["discipline_id"] = int(new_disc)
-
-            if update_row(write_cur, table=table, pk=pk, pk_value=pk_value, writes=writes):
-                stats["rows_updated"] += 1
-            else:
-                stats["rows_skipped"] += 1
-
-            if processed % commit_every == 0:
-                conn.commit()
-                elapsed = time.monotonic() - start
-                rate = processed / elapsed if elapsed > 0 else 0.0
-                log.info(
-                    "progress: scanned=%d updated=%d elapsed=%.1fs rate=%.1f rows/s",
-                    stats["rows_scanned"], stats["rows_updated"], elapsed, rate,
-                )
-
-        conn.commit()
-    finally:
-        write_cur.close()
+    stats = run(reader, writer, on_progress=_progress)
+    conn.commit()   # final commit on success only (matches old behavior: skipped on error)
 
     elapsed = time.monotonic() - start
-    log.info(
-        "done: scanned=%d updated=%d skipped=%d elapsed=%.1fs",
-        stats["rows_scanned"], stats["rows_updated"], stats["rows_skipped"], elapsed,
-    )
+    log.info("done: scanned=%d updated=%d skipped=%d elapsed=%.1fs",
+             stats.rows_scanned, stats.rows_updated, stats.rows_skipped, elapsed)
 
-    stats = _finalize_stats(stats)
-
+    result = _stats_to_dict(stats)
     if on_done is not None:
         try:
-            on_done(stats)
+            on_done(result)
         except Exception as e:  # callback isolation -- never propagate
             log.warning("on_done callback raised: %r", e)
-            stats["callback_error"] = repr(e)
-
-    return stats
+            result["callback_error"] = repr(e)
+    return result

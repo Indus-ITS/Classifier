@@ -78,3 +78,62 @@ def update_row(cur, table: str, pk: str, pk_value, writes: dict) -> bool:
     )
     cur.execute(stmt, [*writes.values(), pk_value])
     return True
+
+
+from classifier.core.record import Record, ClassificationResult  # noqa: E402
+
+
+class RdsReader:
+    """Streams unclassified rows as Records. Does NOT own the connection
+    (caller's lifecycle); the server-side cursor is closed inside
+    iter_unclassified.
+    """
+    def __init__(self, conn, *, table: str = "documents",
+                 pk: str = "document_id", fetch_size: int = 1000):
+        self.conn = conn
+        self.table = table
+        self.pk = pk
+        self.fetch_size = fetch_size
+
+    def __iter__(self):
+        for pk_value, dt, ty, disc, title in iter_unclassified(
+            self.conn, table=self.table, pk=self.pk, fetch_size=self.fetch_size
+        ):
+            yield Record(
+                title="" if title is None else str(title),
+                doc_type="" if dt is None else str(dt),
+                type="" if ty is None else str(ty),
+                discipline_id="" if disc is None else str(disc),
+                handle=pk_value,
+            )
+
+    def close(self) -> None:
+        pass
+
+
+class RdsWriter:
+    """Per-row UPDATE sink. Owns commit cadence (every commit_every processed
+    rows + a final commit on close) and its own non-server-side cursor. Does
+    NOT own the connection.
+    """
+    def __init__(self, conn, *, table: str = "documents",
+                 pk: str = "document_id", commit_every: int = 500):
+        self.conn = conn
+        self.table = table
+        self.pk = pk
+        self.commit_every = commit_every
+        self.cur = conn.cursor()
+        self.processed = 0
+
+    def write(self, rec: Record, result: ClassificationResult, writes) -> None:
+        w = dict(writes)
+        if "discipline_id" in w:
+            w["discipline_id"] = int(w["discipline_id"])   # SQL needs int FK
+        update_row(self.cur, table=self.table, pk=self.pk,
+                   pk_value=rec.handle, writes=w)
+        self.processed += 1
+        if self.processed % self.commit_every == 0:
+            self.conn.commit()
+
+    def close(self) -> None:
+        self.cur.close()
