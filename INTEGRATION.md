@@ -15,7 +15,7 @@ it reads the `title` column and fills in three classification fields:
 
 | Field           | Type | What it means |
 |-----------------|------|---------------|
-| `doc_type`      | text | Either `"drawing"` or `"document"` (lowercase, canonical). |
+| `doc_type`      | text | One of `"drawing"`, `"sheet"`, or `"document"` (lowercase, canonical). |
 | `type`          | text | A 3-letter document type code (e.g. `DWG`, `DDT`, `LST`, `SPC`, `ISO`). Drawn from a curated enum. |
 | `discipline_id` | int  | Foreign key into the disciplines table. Learned from labelled training data. |
 
@@ -169,6 +169,10 @@ repo has a different layout, the cleanest fix is symlinking
 repo. The only paths the **runtime** reads are the generated configs
 under `src/classifier/config/` — those are always Python imports, so
 they don't depend on cwd.
+
+## Extending the classifier with new output producers
+
+New output producers implement a `write(rec, result, writes)`/`close()` writer duck type and run via `classifier.pipeline.run.run` — no core changes needed.
 
 ## Two public entry points
 

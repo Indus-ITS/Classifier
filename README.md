@@ -1,9 +1,9 @@
 # Document Classifier
 
 Classifies engineering deliverable rows from project schedule sheets into
-two classes — **Drawings** or **Documents** — by reading a canonical
-28-column CSV, filling `doc_type` from keyword scoring and `type` from a
-lookup built from labelled reference indices.
+three classes — **drawing**, **sheet**, or **document** — by reading a
+canonical 28-column CSV, filling `doc_type` from keyword scoring and
+`type` from a lookup built from labelled reference indices.
 
 ## Quick start
 
@@ -14,8 +14,8 @@ classify
 ```
 
 `classify` reads `input/To be classified/document.csv`, fills `doc_type`
-(normalized to `drawing`/`document`) and `type` (filled only when empty,
-via the lookup built from `input/classified_csv/`), and writes
+(normalized to `drawing`/`sheet`/`document`) and `type` (filled only when
+empty, via the lookup built from `input/classified_csv/`), and writes
 [output/classified.csv](output/classified.csv). The output preserves the
 input's 28-column schema, column order, and row count.
 
@@ -23,7 +23,7 @@ input's 28-column schema, column order, and row count.
 
 | Command              | What it does |
 |----------------------|--------------|
-| `classify`           | Read `input/To be classified/document.csv`, fill `doc_type` (normalized to `drawing`/`document`) and `type` (filled only when empty, via the lookup built from `input/classified_csv/`), write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
+| `classify`           | Read `input/To be classified/document.csv`, fill `doc_type` (normalized to `drawing`/`sheet`/`document`) and `type` (filled only when empty, via the lookup built from `input/classified_csv/`), write `output/classified.csv`. Schema-preserving: same 28 columns, same order, same row count. |
 | `classify-rds`       | Same classifier logic against a PostgreSQL RDS `documents` table. Selects rows where any of `doc_type` / `type` / `discipline_id` is NULL/empty, fills them from the row `title`, UPDATEs in place. Reads DSN from `PGHOST` / `PGDATABASE` / `PGUSER` / `PGPASSWORD` / `PGPORT` env vars. See [Pipeline use](#pipeline-use-rds) for the in-process API. |
 | `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
 | `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
@@ -91,7 +91,7 @@ For large tables, add partial indexes on the three filtered columns
 ## How to iterate on accuracy
 
 1. Edit keyword rules in
-   [src/classifier/config/keywords.py](src/classifier/config/keywords.py) —
+   [src/classifier/config/type_keywords.py](src/classifier/config/type_keywords.py) —
    `KEYWORD_RULES[bucket]` is the main lever. Weights are 1-5; weight 5
    is required for `high` confidence.
 2. Re-run `classify` and inspect `output/classified.csv`.
@@ -106,7 +106,7 @@ the data (e.g. `arra?n?g(e)?ment` for ARRANGEMENT/ARRANGMENT/ARRAGEMENT,
 used** — it introduces unpredictable false positives that are expensive
 to debug. When a new typo surfaces, the fix is to relax the relevant
 regex pattern in
-[src/classifier/config/keywords.py](src/classifier/config/keywords.py).
+[src/classifier/config/type_keywords.py](src/classifier/config/type_keywords.py).
 
 ## Tunables
 
@@ -114,11 +114,11 @@ regex pattern in
 |---|---|---|
 | `BUCKETS` | [config/buckets.py](src/classifier/config/buckets.py) | The 10 internal content buckets (don't reorder) |
 | `BUCKET_TO_CLASS` | [config/buckets.py](src/classifier/config/buckets.py) | 10-bucket → 2-class fold (Drawings or Documents) |
-| `KEYWORD_RULES` | [config/keywords.py](src/classifier/config/keywords.py) | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
+| `KEYWORD_RULES` | [config/type_keywords.py](src/classifier/config/type_keywords.py) | `{bucket: [(regex, weight 1-5), ...]}` — bucket scoring |
 | `TYPE_TO_BUCKET` | [config/buckets.py](src/classifier/config/buckets.py) | 3-letter dossier Type code → bucket |
 | `BUCKET_PRIMARY_CODE` | [config/buckets.py](src/classifier/config/buckets.py) | Bucket → 3-letter code used in proposed target filename |
-| `DISCIPLINE_KEYWORD_RULES` | [config/keywords.py](src/classifier/config/keywords.py) | `[(regex, discipline), ...]` — fallback discipline inference |
-| `REF_PATTERN`, `CRS_PATTERN`, `COVER_PATTERN` | [config/patterns.py](src/classifier/config/patterns.py) | Regex strings for ref / CRS / cover-sheet detection |
+| `DISCIPLINE_KEYWORD_RULES` | [config/discipline_keywords.py](src/classifier/config/discipline_keywords.py) | `[(regex, discipline), ...]` — fallback discipline inference |
+| `HARD_OVERRIDES` | [config/type_overrides.py](src/classifier/config/type_overrides.py) | Per-pattern type overrides applied before keyword scoring |
 
 ## Bucket → Class mapping
 
@@ -132,13 +132,13 @@ The 10-bucket → 2-class fold lives in `BUCKET_TO_CLASS`:
 | Specifications | Documents |
 | Calculations | Documents |
 | Reports | Documents |
-| Lists_MTOs_BOMs | Documents |
+| Lists_MTOs_BOMs | **Sheets** |
 | Procedures_Plans | Documents |
 | CRS | Documents |
 | Documents | Documents |
 
 This fold is implemented in
-[`fold_to_class()`](src/classifier/core/scoring.py).
+[`doc_type_for_bucket()`](src/classifier/core/folding.py).
 
 ## Architecture
 
@@ -155,8 +155,15 @@ infrastructure (io)
 ```
 
 - **`core/`** is pure logic: regex extraction, scoring, revisions. No
-  I/O, no upward imports.
-- **`io/`** wraps file readers/writers (CSV).
+  I/O, no upward imports. The per-row entry point is
+  `classifier.core.classify.classify_record`; the generic scoring engine
+  is `classifier.core.scoring`; bucket-to-doc_type folding is
+  `classifier.core.folding.doc_type_for_bucket`.
+- **`io/`** wraps file readers/writers (CSV, RDS, workbooks). Execution
+  backends (CSV/RDS/in-memory) implement reader/writer duck-typed
+  protocols and run through `classifier.pipeline.run.run`; adding a new
+  output producer implements a `write(rec, result, writes)`/`close()`
+  writer and requires no core changes.
 - **`pipeline/`** orchestrates `core/` + `io/` for the enrich/audit flows.
 - **`cli/`** is presentation only — argparse, prompts, ANSI colors,
   progress bars, formatted reports.
