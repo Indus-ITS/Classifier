@@ -28,6 +28,30 @@ input's 28-column schema, column order, and row count.
 | `convert-classified` | Walk `input/classified/**/*.xls*` (skipping `void/`), convert each parseable sheet to a 28-column CSV under `input/classified_csv/`. Output is committed so the lookup is reproducible offline. |
 | `build-type-enum`    | Re-scan `input/classified_csv/` and regenerate `src/classifier/config/type_enum.py` (the canonical 3-letter `type` enum). |
 | `learn-discipline-keywords` | Re-scan `input/classified_csv/` for `(title, discipline_id)` pairs and regenerate `src/classifier/config/discipline_keywords.py`. Mirrors `learn-type-keywords`. |
+| `sort-files`         | Consume `output/classified.csv`, match source files by `customer_ref`, copy one preferred file per logical document into `dest/<Drawings\|Documents\|Sheets>/` (pdf preferred for drawing/document, xlsx preferred for sheet), route unmatched files to `Unmatched/`, and write `route-report.csv`. Supports `--dry-run`. |
+
+## sort-files router
+
+`sort-files` consumes `output/classified.csv` (the output of `classify`) and
+physically routes source deliverable files into organised destination buckets.
+
+**What it does:**
+
+- Reads the classified CSV to build a `customer_ref → doc_type` index.
+- Walks `--source-dir` recursively; skips files already inside a bucket folder
+  (`Drawings/`, `Documents/`, `Sheets/`, `Unmatched/`) so re-runs are safe.
+- Groups files by logical document (via `customer_ref` + revision parsing) and
+  picks one winner per group: latest revision wins; for drawing/document the
+  preferred format is pdf; for sheet the preferred format is xlsx.
+- Copies the winner into `dest/<Drawings|Documents|Sheets>/`; files with no
+  matching `customer_ref` in the CSV go to `dest/Unmatched/`.
+- Writes a `route-report.csv` sidecar in `dest/` with one row per action plus
+  rows for CSV entries that had no matching source file (`no-file-for-row`).
+- `--dry-run` prints the summary without copying anything or writing the report.
+
+```bash
+sort-files --classified-csv output/classified.csv --source-dir SRC --dest-dir DEST
+```
 
 ## Layout
 
