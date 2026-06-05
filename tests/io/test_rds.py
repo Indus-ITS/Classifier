@@ -49,8 +49,9 @@ def test_fills_empty_fields_and_skips_complete_rows():
     conn = FakeConn(rows)
     stats = classify_from_rds(conn, commit_every=10)
     assert stats["rows_scanned"] == 2
-    # Row 1 has all-empty targets and a recognizable title -> at least one write.
-    assert stats["rows_updated"] >= 1
+    # Exactly 1 row updated (row 1) and exactly 1 skipped (row 2 already complete).
+    assert stats["rows_updated"] == 1
+    assert stats["rows_skipped"] == 1
     # Stats dict shape (superset preserved):
     for key in ("rows_scanned", "rows_updated", "rows_skipped",
                 "doc_type", "type", "discipline_id", "callback_error"):
