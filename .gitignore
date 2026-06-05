@@ -8,7 +8,6 @@ dist/
 output/*
 !output/.gitkeep
 !output/classified.csv
-!output/unclassified.md
 .idea/
 .vscode/
 *.tmp
