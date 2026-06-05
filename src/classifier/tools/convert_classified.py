@@ -56,6 +56,7 @@ KNOWN_CATEGORIES: frozenset[str] = frozenset({
 DOC_TYPE_FROM_SECTION: dict[str, str] = {
     "document": "document", "documents": "document",
     "drawing": "drawing", "drawings": "drawing",
+    "sheet": "sheet", "sheets": "sheet",
 }
 
 
@@ -113,7 +114,7 @@ def _doc_type_for(section_label: str, type_code: str) -> str:
     if bucket is None:
         return ""
     folded = BUCKET_TO_CLASS[bucket]
-    return "drawing" if folded == "Drawings" else "document"
+    return {"Drawings": "drawing", "Sheets": "sheet"}.get(folded, "document")
 
 
 def xlsx_to_rows(workbook_path: Path) -> Iterable[tuple[str, list[dict[str, str]]]]:
