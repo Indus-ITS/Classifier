@@ -1,23 +1,18 @@
 "id","name","sub_discipline","code","description"
-1,"Civil",NULL,"CIV","Civil"
-2,"Construction Management",NULL,"CRM","Construction Management"
-3,"Electrical",NULL,"ELE","Electrical"
-4,"Engineering Management",NULL,"EMT","Engineering Management / Engineering Team"
-5,"HSE",NULL,"HSE","Health, Safety & Environment"
-6,"I&C",NULL,"INC","Instrumentation & Control (I&C)"
-7,"Mechanical",NULL,"MEC","Mechanical"
-8,"Piping",NULL,"PIP","Piping"
-9,"Package",NULL,"PKG","Package / Vendor Package"
-10,"Project Management",NULL,"PRJ","Project Management"
-11,"Process",NULL,"PRO","Process"
-12,"Procurement",NULL,"PRP","Procurement"
-13,"QA/QC",NULL,"QAC","QA/QC (Quality Assurance / Control)"
-14,"Mechanical Rotary",NULL,"RO","Rotary"
-36,"Mechanical Static",NULL,"STC","Static"
-37,"Telecom",NULL,"TEL","Telecom"
-39,"HVAC",NULL,"HVAC","Heating, Ventilation & Air Conditioning"
-17,"Process Studies",NULL,"PST","Process Studies / Engineering Studies (provisional - inferred from training titles)"
-20,"Rotating Equipment",NULL,"ROE","Rotating Equipment / Pumps (provisional - inferred from training titles)"
-23,"Engineering Deliverables",NULL,"EDL","Engineering Deliverables / Templates / Design Basis (provisional - inferred from training titles)"
-25,"Fire & Safety",NULL,"FAS","Fire & Safety / F&G (provisional - inferred from training titles)"
-26,"Planning & Scheduling",NULL,"PLS","Planning & Scheduling / Project Execution (provisional - inferred from training titles)"
+1,Civil,,CIV,Civil
+3,Electrical,,ELE,Electrical
+4,Engineering Management,,EMT,Engineering Management / Engineering Team
+8,Piping,,PIP,Piping
+9,Package,,PKG,Package / Vendor Package
+10,Project Management,,PRJ,Project Management
+11,Process,,PRO,Process
+12,Procurement,,PRP,Procurement
+13,QA/QC,,QAC,QA/QC (Quality Assurance / Control)
+14,Mechanical Rotary,,RO,Rotary
+36,Mechanical Static,,STC,Static
+5,HSE,,HSE,"Health, Safety & Environment"
+37,Telecom,,TEL,Telecom
+6,I&C,,INC,Instrumentation & Control (I&C)
+39,HVAC,,HVAC,"Heating, Ventilation & Air Conditioning"
+7,Mechanical,,MEC,Mechanical
+2,Construction Management,,CRM,Construction Management
