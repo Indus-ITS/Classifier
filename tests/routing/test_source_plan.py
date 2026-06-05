@@ -12,6 +12,18 @@ def test_matched_goes_to_label_bucket_unmatched_to_unmatched():
     assert by_ref["99-99-99-9999"].matched is False
 
 
+def test_no_cust_ref_stays_in_source_bucket():
+    # Proposal write-ups have no cust_ref -> they belong in their source bucket,
+    # NOT unmatched. unmatched is only for a cust_ref the table doesn't know.
+    sources = [("proposal", [Path("Write up Elec 220414.doc")])]
+    plan = build_source_plan(sources, {"16-01-19-2602": "document"})
+    assert len(plan.actions) == 1
+    a = plan.actions[0]
+    assert a.bucket == "proposal"
+    assert a.customer_ref is None
+    assert a.matched is False
+
+
 def test_dedup_one_winner_pdf_for_document():
     sources = [("deliverable", [
         Path("d/16-01-19-2602-B.pdf"),
