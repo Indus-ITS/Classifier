@@ -1,4 +1,11 @@
-from classifier.core.table_detect import _header_span, MIN_HEADER_COLS
+import openpyxl
+from classifier.core.table_detect import (
+    _header_span,
+    MIN_HEADER_COLS,
+    find_table,
+    MIN_DATA_ROWS,
+    file_has_table,
+)
 
 
 def test_header_span_finds_three_adjacent_text_cells():
@@ -20,9 +27,6 @@ def test_header_span_ignores_pure_numbers_as_header():
 
 def test_min_header_cols_is_three():
     assert MIN_HEADER_COLS == 3
-
-
-from classifier.core.table_detect import find_table, MIN_DATA_ROWS
 
 
 def _mto_grid():
@@ -61,10 +65,6 @@ def test_find_table_scans_past_leading_blank_rows():
     assert find_table(grid) is not None
 
 
-import openpyxl
-from classifier.core.table_detect import file_has_table
-
-
 def test_file_has_table_finds_table_behind_cover_sheet(tmp_path):
     wb = openpyxl.Workbook()
     cover = wb.active
@@ -95,3 +95,14 @@ def test_file_has_table_returns_none_for_form(tmp_path):
     wb.save(p)
 
     assert file_has_table(str(p)) is None
+
+
+def test_find_table_skips_blank_row_within_data():
+    header = ["A", "B", "C"]
+    data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    blank = [None, None, None]
+    # blank row in the middle must NOT stop the count
+    grid = [header, *data, blank, [10, 11, 12], [13, 14, 15]]
+    hit = find_table(grid)
+    assert hit is not None
+    assert hit.n_data_rows == 5

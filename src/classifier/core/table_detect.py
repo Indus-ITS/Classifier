@@ -8,9 +8,8 @@ can tune them against the Phase-1 evidence report.
 """
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Sequence
 
 MIN_HEADER_COLS: int = 3   # adjacent non-empty text cells to call a row a header
 MIN_DATA_ROWS: int = 5     # consistent data rows required under the header
@@ -25,6 +24,11 @@ def _is_text(cell) -> bool:
     if isinstance(cell, (int, float)):
         return False
     return str(cell).strip() != ""
+
+
+def _is_empty(cell) -> bool:
+    """True iff the cell is None or whitespace-only."""
+    return cell is None or str(cell).strip() == ""
 
 
 def _header_span(row) -> tuple[int, int] | None:
@@ -61,10 +65,10 @@ def _row_fills_span(row, start: int, width: int) -> bool:
         cell = row[c] if c < len(row) else None
         if cell is not None and str(cell).strip() != "":
             filled += 1
-    return filled >= (width + 1) // 2  # strict majority (ceil of half)
+    return filled > width // 2  # strict majority: more than half
 
 
-def find_table(grid) -> TableHit | None:
+def find_table(grid: Sequence) -> TableHit | None:
     """Return the first qualifying table in the grid, or None.
 
     A qualifying table is a header row (>= MIN_HEADER_COLS adjacent text
@@ -79,7 +83,7 @@ def find_table(grid) -> TableHit | None:
         start, width = span
         n_data = 0
         for below in grid[r + 1:]:
-            if all((below[c] if c < len(below) else None) in (None, "")
+            if all(_is_empty(below[c] if c < len(below) else None)
                    for c in range(start, start + width)):
                 continue  # blank row inside/after the table — skip, don't reset
             if _row_fills_span(below, start, width):
@@ -91,7 +95,7 @@ def find_table(grid) -> TableHit | None:
     return None
 
 
-def iter_grids(path: str):
+def iter_grids(path: str) -> Iterator[tuple[str, list]]:
     """Yield (sheet_name, grid) for each worksheet in the workbook.
 
     Uses openpyxl for .xlsx/.xlsm and xlrd for legacy .xls. Unreadable
@@ -114,11 +118,13 @@ def iter_grids(path: str):
             for sh in book.sheets():
                 grid = [sh.row_values(r) for r in range(sh.nrows)]
                 yield sh.name, grid
+    except ImportError:
+        raise
     except Exception:
         return  # unreadable / corrupt — no grids
 
 
-def file_has_table(path: str):
+def file_has_table(path: str) -> tuple[str, TableHit] | None:
     """Return (sheet_name, TableHit) for the first worksheet that holds a
     real table, or None. Scans every worksheet — real tables frequently
     sit behind a Cover/Notes/Index tab."""
