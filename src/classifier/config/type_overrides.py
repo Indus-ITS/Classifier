@@ -119,6 +119,22 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
     "DPP": (
         ("PLOT", "PLAN"),
     ),
+    # Plan documents (not plan-view drawings). Specific 2-grams only —
+    # avoid bare ("PLAN",) so structural plan-view drawings like
+    # "PIPE RACK PLANS AND DETAIL" are not swept up.
+    "PLN": (
+        ("EXECUTION", "PLAN"),
+        ("QUALITY", "PLAN"),
+        ("HSE", "PLAN"),
+        ("INSPECTION", "PLAN"),
+        ("MANAGEMENT", "PLAN"),
+        ("PROJECT", "PLAN"),
+        ("CONTINGENCY", "PLAN"),
+        ("PROCUREMENT", "PLAN"),
+        ("MOBILIZATION", "PLAN"),
+        ("COMMISSIONING", "PLAN"),
+        ("EMERGENCY", "RESPONSE", "PLAN"),
+    ),
     "DAL": (
         ("ELECTRICAL", "EQUIPMENT", "LAYOUT"),
         ("ELECTRICAL", "CABLE", "ROUTING"),
@@ -137,5 +153,25 @@ NEGATIVE_KEYWORDS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("LIST",),
         ("BULK",),
         ("LOCATION",),
+        # "INSTRUMENT X DRAWINGS" patterns where the X is not "DIAGRAM".
+        # Real P&IDs land via HARD_OVERRIDES before this prune runs, so
+        # these only suppress the learned scorer's "INSTRUMENT" signal
+        # on instrumentation-discipline drawings that are not P&IDs.
+        ("INSTRUMENT", "LOOP"),
+        ("INSTRUMENT", "LOOP/SEGMENT"),
+        ("INSTRUMENT", "INSTALLATION"),
+        ("INSTRUMENT", "JB"),
+        ("INSTRUMENT", "INDEX"),
+        ("INSTRUMENT", "HOOK"),
+        ("LOOP", "DRAWING"),
+    ),
+    # "MODEL INDEX DRAWING" and similar are CAD drawings (.dwg), not
+    # tabular indexes. When a title names a DRAWING, suppress IDX so the
+    # row routes to the Drawings class via the DRAWING/SKETCH fallback.
+    # A plain index ("INSTRUMENT INDEX") has no DRAWING token and is
+    # unaffected. Lists/registers of drawings ("DRAWING LIST",
+    # "DRAWING REGISTER") are typed LST/REG, not IDX, so they stay Sheets.
+    "IDX": (
+        ("DRAWING",),
     ),
 }
