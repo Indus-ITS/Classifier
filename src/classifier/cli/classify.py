@@ -28,23 +28,14 @@ from pathlib import Path
 
 from classifier.io.csv_io import CsvReader, CsvWriter
 from classifier.pipeline.run import run
-from classifier.pipeline.staleness import stale_configs
 
 INPUT_PATH = Path("input/To be classified/document.csv")
 OUTPUT_PATH = Path("output/classified.csv")
-CLASSIFIED_CSV_DIR = Path("input/classified_csv")
-TYPE_KEYWORDS_PATH = Path("src/classifier/config/type_keywords.py")
 
 
 def main() -> None:
     if not INPUT_PATH.exists():
         raise SystemExit(f"input not found: {INPUT_PATH}")
-
-    for path, tool in stale_configs(
-        [(TYPE_KEYWORDS_PATH, "learn-type-keywords")], CLASSIFIED_CSV_DIR
-    ):
-        print(f"!! WARNING: {path.name} is older than training data. "
-              f"Run: {tool}")
 
     reader = CsvReader(INPUT_PATH)
     writer = CsvWriter(OUTPUT_PATH)

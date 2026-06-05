@@ -7,25 +7,12 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 from typing import Callable
 
 from classifier.io.rds import RdsReader, RdsWriter
 from classifier.pipeline.run import run
-from classifier.pipeline.staleness import stale_configs
 
 log = logging.getLogger("classifier.rds")
-
-TYPE_KEYWORDS_PATH = Path("src/classifier/config/type_keywords.py")
-DISCIPLINE_KEYWORDS_PATH = Path("src/classifier/config/discipline_keywords.py")
-TYPE_TO_DISCIPLINE_PATH = Path("src/classifier/config/type_to_discipline.py")
-CLASSIFIED_CSV_DIR = Path("input/classified_csv")
-
-_GENERATED_CONFIGS = (
-    (TYPE_KEYWORDS_PATH,       "learn-type-keywords"),
-    (DISCIPLINE_KEYWORDS_PATH, "learn-discipline-keywords"),
-    (TYPE_TO_DISCIPLINE_PATH,  "learn-type-discipline"),
-)
 
 
 def _stats_to_dict(stats) -> dict:
@@ -49,9 +36,6 @@ def classify_from_rds(
     fetch_size: int = 1000,
     on_done: Callable[[dict], None] | None = None,
 ) -> dict:
-    for path, tool in stale_configs(list(_GENERATED_CONFIGS), CLASSIFIED_CSV_DIR):
-        log.warning("%s is older than training data; run %s", path.name, tool)
-
     log.info("classify_from_rds start: table=%s pk=%s", table, pk)
     start = time.monotonic()
 
