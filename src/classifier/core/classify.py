@@ -66,6 +66,25 @@ def fill_discipline(row_disc: str, title: str,
     return "", "miss"
 
 
+def plan_writes(rec: Record, result: ClassificationResult) -> dict[str, object]:
+    """Fields a sink should persist, applying only-fill-empty + doc_type diff.
+
+    Returns {} when nothing should change (a "skipped" row). Faithful to the
+    historical RDS write conditions: doc_type writes on a normalized diff;
+    type/discipline write only when the existing value was empty AND inference
+    produced a value. Values are returned in their core string form; a sink
+    that needs another type (e.g. discipline_id as int for SQL) casts at write.
+    """
+    writes: dict[str, object] = {}
+    if result.doc_type.value != rec.doc_type.strip().lower():
+        writes["doc_type"] = result.doc_type.value
+    if rec.type == "" and result.type.value != "":
+        writes["type"] = result.type.value
+    if rec.discipline_id == "" and result.discipline_id.value not in ("", None):
+        writes["discipline_id"] = result.discipline_id.value
+    return writes
+
+
 def classify_record(rec: Record) -> ClassificationResult:
     """The single per-row entry. Pure; no I/O. Composes the three helpers,
     feeding the just-inferred ``type`` as the discipline scorer's hint.
