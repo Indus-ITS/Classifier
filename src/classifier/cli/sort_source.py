@@ -18,13 +18,13 @@ import pandas as pd
 from classifier.io.normalize import is_empty
 from classifier.routing.source_plan import DocRow, build_plan
 
-REPORT_COLS = ("bucket", "key", "matched", "doc_source",
+REPORT_COLS = ("bucket", "doc_class", "key", "matched",
                "chosen_file", "chosen_format", "related_count")
 
 
 def _load_rows(path: Path) -> list[DocRow]:
     df = pd.read_csv(path, dtype=str, keep_default_na=False, na_values=[])
-    for c in ("customer_ref", "document_no", "doc_source", "doc_type"):
+    for c in ("customer_ref", "document_no", "doc_source", "title"):
         if c not in df.columns:
             raise SystemExit(f"{path}: missing required column {c!r}")
     rows: list[DocRow] = []
@@ -33,7 +33,7 @@ def _load_rows(path: Path) -> list[DocRow]:
             customer_ref="" if is_empty(r["customer_ref"]) else str(r["customer_ref"]),
             document_no="" if is_empty(r["document_no"]) else str(r["document_no"]),
             doc_source="" if is_empty(r["doc_source"]) else str(r["doc_source"]).strip().lower(),
-            doc_type="" if is_empty(r["doc_type"]) else str(r["doc_type"]).strip().lower(),
+            title="" if is_empty(r["title"]) else str(r["title"]),
         ))
     return rows
 
@@ -80,15 +80,19 @@ def main(argv: list[str] | None = None) -> int:
     per_bucket: dict[str, int] = {}
     report: list[dict] = []
     for a in plan.actions:
-        dest = _unique_dest(args.dest / a.bucket / a.src.name, taken)
+        base = args.dest / a.bucket
+        if a.doc_class:
+            base = base / a.doc_class
+        dest = _unique_dest(base / a.src.name, taken)
         taken.add(dest)
         if not args.dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(a.src, dest)
-        per_bucket[a.bucket] = per_bucket.get(a.bucket, 0) + 1
+        label = f"{a.bucket}/{a.doc_class}" if a.doc_class else a.bucket
+        per_bucket[label] = per_bucket.get(label, 0) + 1
         report.append({
-            "bucket": a.bucket, "key": a.key, "matched": a.matched,
-            "doc_source": a.doc_source, "chosen_file": dest.name,
+            "bucket": a.bucket, "doc_class": a.doc_class, "key": a.key,
+            "matched": a.matched, "chosen_file": dest.name,
             "chosen_format": a.chosen_format, "related_count": len(a.related),
         })
 
