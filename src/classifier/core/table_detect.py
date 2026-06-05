@@ -8,7 +8,9 @@ can tune them against the Phase-1 evidence report.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
+from typing import Iterator
 
 MIN_HEADER_COLS: int = 3   # adjacent non-empty text cells to call a row a header
 MIN_DATA_ROWS: int = 5     # consistent data rows required under the header
@@ -86,4 +88,42 @@ def find_table(grid) -> TableHit | None:
                 break  # structure broke; stop counting this header's table
         if n_data >= MIN_DATA_ROWS:
             return TableHit(r, start, width, n_data)
+    return None
+
+
+def iter_grids(path: str):
+    """Yield (sheet_name, grid) for each worksheet in the workbook.
+
+    Uses openpyxl for .xlsx/.xlsm and xlrd for legacy .xls. Unreadable
+    workbooks yield nothing (the caller treats that as 'no table').
+    """
+    lower = path.lower()
+    try:
+        if lower.endswith((".xlsx", ".xlsm")):
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            try:
+                for ws in wb.worksheets:
+                    grid = [list(row) for row in ws.iter_rows(values_only=True)]
+                    yield ws.title, grid
+            finally:
+                wb.close()
+        elif lower.endswith(".xls"):
+            import xlrd
+            book = xlrd.open_workbook(path)
+            for sh in book.sheets():
+                grid = [sh.row_values(r) for r in range(sh.nrows)]
+                yield sh.name, grid
+    except Exception:
+        return  # unreadable / corrupt — no grids
+
+
+def file_has_table(path: str):
+    """Return (sheet_name, TableHit) for the first worksheet that holds a
+    real table, or None. Scans every worksheet — real tables frequently
+    sit behind a Cover/Notes/Index tab."""
+    for sheet_name, grid in iter_grids(path):
+        hit = find_table(grid)
+        if hit is not None:
+            return sheet_name, hit
     return None
