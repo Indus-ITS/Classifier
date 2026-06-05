@@ -1,24 +1,12 @@
-"""Generate ``classifier.config.discipline_keywords`` from labeled CSVs.
+"""Generate ``classifier.config.discipline_keywords`` from labelled CSVs.
 
-The labelled CSVs in ``input/classified_csv/`` use the CLIENT's
-discipline taxonomy. DEST has 7 internal disciplines (Civil, Electrical,
-EMT, I&C, Mechanical, Piping, Process) that the client taxonomy folds
-into via ``input/discipline_fold.csv``.
+Each labelled row's ``discipline_id`` is already a ``disciplines.csv`` id.
+Train keyword rules directly under that id; no remapping. Rows whose
+``discipline_id`` is not present in ``input/disciplines.csv`` are dropped as
+orphans (keeps ``documents.discipline_id`` FK-safe). Disciplines with fewer
+than ``MIN_CLASS_DOCS`` labelled rows emit no rules and never fire.
 
-Flow:
-  1. Read every (client_discipline_id, title) pair from the labelled CSVs.
-  2. Look up client_discipline_id in the fold table -> dest_discipline_id.
-  3. Rows whose client_id has no fold entry are dropped as orphans.
-  4. Train keyword rules per DEST discipline_id.
-  5. Emit ``{dest_id: ((phrase, weight), ...)}`` to
-     ``src/classifier/config/discipline_keywords.py``.
-
-The RDS pipeline writes the trained dest_id directly into
-``documents.discipline_id``, which is FK-safe by construction (every
-dest_id in the fold is validated against ``input/disciplines.csv``).
-
-Scoring, eligibility, auto-stopword rules mirror
-``learn_type_keywords`` exactly so the two learners stay aligned.
+Scoring, eligibility, and auto-stopword rules mirror ``learn_type_keywords``.
 
 Run from project root::
 
@@ -44,7 +32,6 @@ from classifier.io.normalize import is_empty
 
 CSV_ROOT = Path("input/classified_csv")
 DISCIPLINES_TABLE_CSV = Path("input/disciplines.csv")
-DISCIPLINE_FOLD_CSV = Path("input/discipline_fold.csv")
 OUT_PATH = Path("src/classifier/config/discipline_keywords.py")
 
 MIN_CLASS_DOCS: int = 4
@@ -67,13 +54,9 @@ def _parse_discipline(raw: str) -> int | None:
         return None
 
 
-def _load_valid_dest_ids() -> frozenset[int]:
-    """Load the canonical DEST discipline_id set from disciplines.csv.
-
-    Used only to validate the RHS of the fold table -- every dest_id in
-    the fold MUST exist in this set, otherwise the pipeline would write
-    FK-invalid values into documents.discipline_id.
-    """
+def _load_valid_discipline_ids() -> frozenset[int]:
+    """Load the valid discipline id set from disciplines.csv. A labelled
+    discipline_id must be in this set to be trained; others are dropped."""
     if not DISCIPLINES_TABLE_CSV.exists():
         raise SystemExit(
             f"disciplines table not found at {DISCIPLINES_TABLE_CSV}. "
@@ -93,52 +76,15 @@ def _load_valid_dest_ids() -> frozenset[int]:
     return frozenset(ids)
 
 
-def _load_fold(valid_dest_ids: frozenset[int]) -> dict[int, int]:
-    """Load the client -> DEST discipline fold table.
 
-    The labelled training CSVs use the client's discipline taxonomy
-    (e.g. Telecom, HVAC, Mechanical Static, project-management buckets).
-    DEST has 7 disciplines that those fold into. The fold table makes
-    that explicit: each row maps a client_id to one of DEST's 7 ids.
-
-    Client ids that have no fold entry are treated as orphans in
-    ``_collect_rows`` and dropped from training. This is the only
-    whitelist mechanism -- discipline_ids reach training only through
-    the fold table, which guarantees the learned rules emit DEST ids.
-    """
-    if not DISCIPLINE_FOLD_CSV.exists():
-        raise SystemExit(
-            f"discipline fold not found at {DISCIPLINE_FOLD_CSV}. "
-            "Create it with (client_id, dest_id) columns."
-        )
-    df = pd.read_csv(DISCIPLINE_FOLD_CSV, dtype=str, keep_default_na=False, na_values=[])
-    if not {"client_id", "dest_id"}.issubset(df.columns):
-        raise SystemExit(f"{DISCIPLINE_FOLD_CSV}: need columns 'client_id' and 'dest_id'")
-    fold: dict[int, int] = {}
-    for _, row in df.iterrows():
-        c = _parse_discipline(row["client_id"])
-        d = _parse_discipline(row["dest_id"])
-        if c is None or d is None:
-            continue
-        if d not in valid_dest_ids:
-            raise SystemExit(
-                f"{DISCIPLINE_FOLD_CSV}: dest_id={d} (folded from client_id={c}) "
-                f"is not in {DISCIPLINES_TABLE_CSV}. Fix the fold or the disciplines table."
-            )
-        fold[c] = d
-    if not fold:
-        raise SystemExit(f"{DISCIPLINE_FOLD_CSV}: no valid (client_id, dest_id) rows found")
-    return fold
-
-
-def _collect_rows(fold: dict[int, int]
+def _collect_rows(valid_ids: frozenset[int]
                   ) -> tuple[list[tuple[int, str, Path]], Counter[int]]:
-    """Yield ``(dest_discipline_id, title, source_path)`` for every
-    eligible row, applying the client -> DEST fold.
+    """Yield ``(discipline_id, title, source_path)`` for every eligible row,
+    using the labelled discipline_id as-is.
 
-    Returns ``(rows, orphan_counts)`` where ``orphan_counts`` is a
-    Counter of client discipline_ids seen in the training CSVs that
-    have no entry in the fold table (and are therefore dropped).
+    Returns ``(rows, orphan_counts)`` where ``orphan_counts`` is a Counter of
+    discipline_ids seen in the training CSVs that are NOT in
+    ``input/disciplines.csv`` (and are therefore dropped).
     """
     rows: list[tuple[int, str, Path]] = []
     orphans: Counter[int] = Counter()
@@ -151,14 +97,13 @@ def _collect_rows(fold: dict[int, int]
         for _, row in df.iterrows():
             if is_empty(row["title"]):
                 continue
-            client_disc = _parse_discipline(row["discipline_id"])
-            if client_disc is None:
+            disc = _parse_discipline(row["discipline_id"])
+            if disc is None:
                 continue
-            dest_disc = fold.get(client_disc)
-            if dest_disc is None:
-                orphans[client_disc] += 1
+            if disc not in valid_ids:
+                orphans[disc] += 1
                 continue
-            rows.append((dest_disc, str(row["title"]), p))
+            rows.append((disc, str(row["title"]), p))
     return rows, orphans
 
 
@@ -284,29 +229,25 @@ def render(rules: dict[int, tuple[tuple[str, float], ...]],
 def main() -> None:
     if not CSV_ROOT.exists():
         raise SystemExit(f"csv dir not found: {CSV_ROOT}")
-    valid_dest_ids = _load_valid_dest_ids()
-    fold = _load_fold(valid_dest_ids)
-    rows, orphans = _collect_rows(fold)
+    valid_ids = _load_valid_discipline_ids()
+    rows, orphans = _collect_rows(valid_ids)
     if not rows:
         raise SystemExit(f"no eligible (discipline_id, title) rows found under {CSV_ROOT}")
     rules, class_counts, untrained = learn(rows)
     text = render(rules, class_counts, untrained, len(rows), CSV_ROOT)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(text, encoding="utf-8", newline="\n")
-    dest_buckets = sorted(set(fold.values()))
     print(f"Wrote {OUT_PATH}")
-    print(f"  fold table:            {len(fold)} client_id -> dest_id entries")
-    print(f"  DEST buckets in fold:  {dest_buckets}")
-    print(f"  training rows kept:    {len(rows)}")
-    print(f"  DEST disciplines trained: {sorted(rules)}")
-    print(f"  DEST disciplines untrained (< {MIN_CLASS_DOCS} training rows): {sorted(untrained)}")
+    print(f"  training rows kept:       {len(rows)}")
+    print(f"  disciplines trained:      {sorted(rules)}")
+    print(f"  disciplines untrained (< {MIN_CLASS_DOCS} rows): {sorted(untrained)}")
     if orphans:
         orphan_summary = ", ".join(f"{d} ({n})" for d, n in orphans.most_common())
-        print(f"  client IDs dropped (no fold entry):")
+        print(f"  ids dropped (not in disciplines.csv):")
         print(f"    {orphan_summary}")
     for d in sorted(rules)[:3]:
         sample = ", ".join(f"{p!r}" for p, _ in rules[d][:3])
-        print(f"    dest_id={d}: {sample}")
+        print(f"    discipline_id={d}: {sample}")
 
 
 if __name__ == "__main__":
