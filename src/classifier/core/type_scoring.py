@@ -44,19 +44,22 @@ SINGULAR_FORMS: frozenset[str] = frozenset({
     "CALCULATION", "DIAGRAM", "DRAWING", "INDEX",
     "LAYOUT", "LIST", "PROCEDURE", "PROCESS",
     "REPORT", "REQUISITION", "SCHEDULE", "SHEET",
-    "SPECIFICATION", "STANDARD",
+    "SKETCH", "SPECIFICATION", "STANDARD",
 })
 
 
 def _depluralize(tok: str) -> str:
     """Fold a curated regular-plural to its singular form.
 
-    Only applies when stripping the trailing 'S' yields a token that's in
-    the SINGULAR_FORMS allowlist. Length guard (>= 5) keeps short common
-    words (IS, AS, OS) unaffected. Not a real stemmer.
+    Only applies when stripping the trailing 'S' (or 'ES') yields a token
+    that's in the SINGULAR_FORMS allowlist. Length guard (>= 5) keeps short
+    common words (IS, AS, OS) unaffected. Not a real stemmer.
     """
-    if len(tok) >= 5 and tok.endswith("S") and tok[:-1] in SINGULAR_FORMS:
-        return tok[:-1]
+    if len(tok) >= 5 and tok.endswith("S"):
+        if tok[:-1] in SINGULAR_FORMS:
+            return tok[:-1]
+        if tok.endswith("ES") and tok[:-2] in SINGULAR_FORMS:
+            return tok[:-2]
     return tok
 
 _DASHES = str.maketrans({
@@ -320,5 +323,21 @@ def pick_type_with_overrides(title: str) -> dict:
     # Phase 4
     result = pick_type(scores)
     result["reason"] = "scored" if result["confidence"] != "none" else "none"
+
+    # Phase 5: DRAWING / SKETCH fallback. When nothing else fired but
+    # the title clearly names a drawing or sketch, assign DWG so the
+    # row gets a generic drawing type instead of being left blank.
+    # Runs only on the "none" branch so it never displaces a real type.
+    if result["confidence"] == "none":
+        if "DRAWING" in tokens or "SKETCH" in tokens:
+            return {
+                "type": "DWG",
+                "score": float("inf"),
+                "runner_up": "",
+                "runner_up_score": 0.0,
+                "n_phrases": 1,
+                "confidence": "high",
+                "reason": "fallback",
+            }
     return result
 
