@@ -2,8 +2,7 @@
 
 The 10 buckets are the fine-grained classification; BUCKET_TO_CLASS folds
 them down to the 3-class user output (Drawings / Documents / Sheets). TYPE_TO_BUCKET
-maps dossier 3-letter Type codes to buckets, and BUCKET_PRIMARY_CODE goes
-the other way for proposed target filenames.
+maps dossier 3-letter Type codes to buckets.
 """
 from __future__ import annotations
 
@@ -62,19 +61,4 @@ TYPE_TO_BUCKET: dict = {
     "TBE": "Documents",     # Technical Bid Evaluation
     "ISO": "Isometrics",    # Isometric drawings (bucket exists)
     "DDT": "Drawings",      # Detail drawings (foundation/structural/roof)
-}
-
-# Bucket -> primary 3-letter code used in the proposed target filename
-# when no dossier Type matches.
-BUCKET_PRIMARY_CODE: dict = {
-    "Drawings": "DWG",
-    "Isometrics": "ISO",
-    "Datasheets": "DAS",
-    "Specifications": "SPC",
-    "Calculations": "CAL",
-    "Reports": "REP",
-    "Lists_MTOs_BOMs": "LST",
-    "Procedures_Plans": "PRO",
-    "CRS": "CRS",
-    "Documents": "DOC",
 }
