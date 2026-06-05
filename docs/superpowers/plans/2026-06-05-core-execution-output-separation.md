@@ -998,6 +998,19 @@ def test_run_closes_both_on_exception():
     except RuntimeError:
         pass
     assert reader.closed and writer.closed
+
+
+def test_writer_closed_even_if_reader_close_raises():
+    class BadCloseReader(ListReader):
+        def close(self):
+            raise RuntimeError("reader close failed")
+    reader = BadCloseReader([Record(title="X")])
+    writer = RecordingWriter()
+    try:
+        run(reader, writer)
+    except RuntimeError:
+        pass
+    assert writer.closed   # writer.close() ran despite reader.close() raising
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1037,15 +1050,18 @@ def run(reader, writer, *,
             if on_progress is not None:
                 on_progress(stats)
     finally:
-        reader.close()
-        writer.close()
+        # Close both even if the first raises; reader's exception still propagates.
+        try:
+            reader.close()
+        finally:
+            writer.close()
     return stats
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/pipeline/test_run.py -v`
-Expected: PASS (2 passed).
+Expected: PASS (3 passed).
 
 - [ ] **Step 5: Commit**
 
@@ -1649,6 +1665,9 @@ compares on subsequent runs. Append to `tests/core/test_scoring_snapshot.py`:
 ```python
 import json
 
+from classifier.core.record import Record
+from classifier.core.classify import classify_record
+
 BASELINE = Path("tests/core/scoring_baseline.json")
 
 
@@ -1657,9 +1676,17 @@ def _verdicts():
     for t in _titles():
         pt = pick_type(score_types(t))
         pd_ = pick_discipline(score_disciplines(t))
+        # Full end-to-end triple via classify_record. This is the ONLY guard
+        # that exercises the type->discipline hint feedback (classify_record
+        # passes the inferred type as fill_discipline's type_hint), so it locks
+        # the TYPE_HINT_BONUS path that Task 18 rewrites.
+        cr = classify_record(Record(title=t))
         out.append({"title": t,
                     "type": pt.get("type"), "type_conf": pt.get("confidence"),
-                    "disc": pd_.get("discipline_id"), "disc_conf": pd_.get("confidence")})
+                    "disc": pd_.get("discipline_id"), "disc_conf": pd_.get("confidence"),
+                    "cr_doc_type": cr.doc_type.value,
+                    "cr_type": cr.type.value,
+                    "cr_disc": cr.discipline_id.value})
     return out
 
 
@@ -1671,6 +1698,10 @@ def test_verdicts_match_frozen_baseline():
     saved = json.loads(BASELINE.read_text())
     assert current == saved, "scoring verdicts drifted from frozen baseline"
 ```
+
+Because `cr_disc` comes from `classify_record` (which feeds the inferred type
+as the discipline hint), any change to `TYPE_HINT_BONUS` or the hint wiring in
+Task 18 that alters a discipline outcome will fail this frozen baseline.
 
 - [ ] **Step 3: Run to record the baseline against CURRENT code**
 
