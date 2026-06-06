@@ -25,7 +25,8 @@ from classifier.core.text_ratio import text_ratio
 csv.field_size_limit(10 ** 7)
 
 DOCNUM_RE = re.compile(r"\d{2}-\d{2}-\d{2}-\d{4}")
-DEFAULT_THRESHOLD: float = 0.4
+DEFAULT_THRESHOLD: float = 0.35
+SPREADSHEET_EXTS = (".xlsx", ".xlsm", ".xls")
 
 
 def _pdf_lines(path: str) -> list[str]:
@@ -99,11 +100,15 @@ def run(csv_path: str, root: str, threshold: float, out_path: str) -> None:
                 fname = os.path.basename(path)
                 if re.match(r"\s*(crs|cta)", fname, re.I):
                     continue  # CRS/CTA never count
-                ratio = file_text_ratio(path)
-                if ratio is None:
-                    cclass = "unknown"
+                # Spreadsheets are tabular by construction; the prose-ratio
+                # gate is PDF-only (verbose MTO description cells read as
+                # prose and would false-positive). Only PDFs are gated.
+                if fname.lower().endswith(SPREADSHEET_EXTS):
+                    ratio = None
+                    cclass = "sheet"
                 else:
-                    cclass = content_class(ratio, threshold)
+                    ratio = file_text_ratio(path)
+                    cclass = "unknown" if ratio is None else content_class(ratio, threshold)
                 rows_out.append({
                     "docnum": ref, "title": title, "file": fname,
                     "title_class": title_class,
