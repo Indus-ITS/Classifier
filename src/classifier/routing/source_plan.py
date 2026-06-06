@@ -31,6 +31,7 @@ from classifier.routing.dedup import parse_entry, pick_winner
 
 UNMATCHED = "unmatched"
 _CUST_REF = re.compile(r"\d{2}-\d{2}-\d{2}-\d{4}")
+_CRS_CTA = re.compile(r"\s*(crs|cta)", re.I)
 
 
 @dataclass(frozen=True)
@@ -57,9 +58,12 @@ class Plan:
     actions: tuple[CopyAction, ...]
     rows_without_file: tuple[str, ...]
     skipped_no_preferred: tuple[str, ...]
+    skipped_crs: tuple[str, ...]
 
 
 def build_plan(rows: list[DocRow], files: list[Path]) -> Plan:
+    skipped_crs = [Path(p).name for p in files if _CRS_CTA.match(Path(p).name)]
+    files = [p for p in files if not _CRS_CTA.match(Path(p).name)]
     entries = [parse_entry(Path(p)) for p in files]
     by_cref: dict[str, list] = {}
     by_name: dict[str, list] = {}
@@ -117,4 +121,4 @@ def build_plan(rows: list[DocRow], files: list[Path]) -> Plan:
             matched=False, chosen_format=we.ext, related=g.related,
         ))
 
-    return Plan(tuple(actions), tuple(rows_without_file), tuple(skipped))
+    return Plan(tuple(actions), tuple(rows_without_file), tuple(skipped), tuple(skipped_crs))
