@@ -10,15 +10,22 @@ Each helper takes ``(existing_value, title)`` and returns ``(value, reason)``.
 from __future__ import annotations
 
 from classifier.config.buckets import TYPE_TO_BUCKET
+from classifier.config.prose_guard import PROSE_DOC_PHRASES
 from classifier.core.folding import doc_type_for_bucket
 from classifier.core.discipline_scoring import pick_discipline_with_overrides
-from classifier.core.type_scoring import pick_type_with_overrides
+from classifier.core.type_scoring import pick_type_with_overrides, canonicalize_title, _phrase_matches
 from classifier.core.record import Record, FieldResult, ClassificationResult
 from classifier.io.normalize import is_empty
 
 DRAWING_ALIASES = {"drawing", "drawings", "dwg"}
 DOCUMENT_ALIASES = {"document", "documents", "doc", "docs"}
 SHEET_ALIASES = {"sheet", "sheets"}
+
+
+def _is_prose_document(title: str) -> bool:
+    """True iff the title matches a known prose-document phrase."""
+    tokens = canonicalize_title(title)
+    return any(_phrase_matches(tokens, list(p)) for p in PROSE_DOC_PHRASES)
 
 
 def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
@@ -31,6 +38,8 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
             return "sheet", "existing"
         if v in DOCUMENT_ALIASES:
             return "document", "existing"
+    if _is_prose_document(title):
+        return "document", "prose_guard"
     pick = pick_type_with_overrides(title)
     if pick["confidence"] == "high":
         bucket = TYPE_TO_BUCKET.get(pick["type"])
