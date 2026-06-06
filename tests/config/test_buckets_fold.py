@@ -6,7 +6,8 @@ def test_lists_mtos_boms_folds_to_sheets():
 
 
 def test_sheet_types_reach_sheets_class():
-    for code in ("LST", "MTO", "BOM", "IDX", "REG", "SCH"):
+    # REG intentionally moved to Documents (see feat: drop CRS bucket; fold REG to Documents)
+    for code in ("LST", "MTO", "BOM", "IDX", "SCH"):
         bucket = TYPE_TO_BUCKET[code]
         assert BUCKET_TO_CLASS[bucket] == "Sheets", code
 

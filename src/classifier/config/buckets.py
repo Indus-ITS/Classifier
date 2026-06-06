@@ -18,7 +18,6 @@ BUCKETS = (
     "Reports",
     "Lists_MTOs_BOMs",
     "Procedures_Plans",
-    "CRS",
     "Documents",
 )
 
@@ -36,8 +35,20 @@ BUCKET_TO_CLASS: dict = {
     "Reports":          "Documents",
     "Lists_MTOs_BOMs":  "Sheets",
     "Procedures_Plans": "Documents",
-    "CRS":              "Documents",
     "Documents":        "Documents",
+}
+
+# Primary short code for each bucket (used for display / reporting).
+BUCKET_PRIMARY_CODE: dict = {
+    "Drawings":         "DWG",
+    "Isometrics":       "ISO",
+    "Datasheets":       "DAS",
+    "Specifications":   "SPC",
+    "Calculations":     "CAL",
+    "Reports":          "REP",
+    "Lists_MTOs_BOMs":  "LST",
+    "Procedures_Plans": "PRO",
+    "Documents":        "DOC",
 }
 
 # -------------------------------------------------------------------------
@@ -55,7 +66,7 @@ TYPE_TO_BUCKET: dict = {
     "CAL": "Calculations",
     "REP": "Reports", "BOD": "Reports", "SOW": "Reports",
     "LST": "Lists_MTOs_BOMs", "MTO": "Lists_MTOs_BOMs", "BOM": "Lists_MTOs_BOMs",
-    "IDX": "Lists_MTOs_BOMs", "REG": "Lists_MTOs_BOMs", "SCH": "Lists_MTOs_BOMs",
+    "IDX": "Lists_MTOs_BOMs", "REG": "Documents", "SCH": "Lists_MTOs_BOMs",
     "PRO": "Procedures_Plans", "PLN": "Procedures_Plans", "PHL": "Procedures_Plans",
     "REQ": "Documents",
     "TBE": "Documents",     # Technical Bid Evaluation
