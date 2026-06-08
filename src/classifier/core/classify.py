@@ -23,13 +23,7 @@ DOCUMENT_ALIASES = {"document", "documents", "doc", "docs"}
 SHEET_ALIASES = {"sheet", "sheets"}
 
 
-def _is_prose_document(title: str) -> bool:
-    """True iff the title matches a known prose-document phrase."""
-    tokens = canonicalize_title(title)
-    return any(_phrase_matches(tokens, list(p)) for p in PROSE_DOC_PHRASES)
-
-
-def _title_has(title: str, markers) -> bool:
+def _title_has(title: str, markers: tuple[tuple[str, ...], ...]) -> bool:
     """True iff the canonicalized title contains any marker phrase."""
     tokens = canonicalize_title(title)
     return any(_phrase_matches(tokens, list(m)) for m in markers)
@@ -45,7 +39,7 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
             return "sheet", "existing"
         if v in DOCUMENT_ALIASES:
             return "document", "existing"
-    if _is_prose_document(title):
+    if _title_has(title, PROSE_DOC_PHRASES):
         return "document", "prose_guard"
     if _title_has(title, DRAWING_TITLE_MARKERS):
         return "drawing", "drawing_title"
