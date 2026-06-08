@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from classifier.config.buckets import TYPE_TO_BUCKET
 from classifier.config.prose_guard import PROSE_DOC_PHRASES
+from classifier.config.drawing_markers import DRAWING_TITLE_MARKERS, INDEX_MARKERS
 from classifier.core.folding import doc_type_for_bucket
 from classifier.core.discipline_scoring import pick_discipline_with_overrides
 from classifier.core.type_scoring import pick_type_with_overrides, canonicalize_title, _phrase_matches
@@ -28,6 +29,12 @@ def _is_prose_document(title: str) -> bool:
     return any(_phrase_matches(tokens, list(p)) for p in PROSE_DOC_PHRASES)
 
 
+def _title_has(title: str, markers) -> bool:
+    """True iff the canonicalized title contains any marker phrase."""
+    tokens = canonicalize_title(title)
+    return any(_phrase_matches(tokens, list(m)) for m in markers)
+
+
 def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
     """Return ``(normalized, reason)``. reason: existing / via_keyword / via_override / defaulted."""
     if not is_empty(value):
@@ -40,6 +47,10 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
             return "document", "existing"
     if _is_prose_document(title):
         return "document", "prose_guard"
+    if _title_has(title, DRAWING_TITLE_MARKERS):
+        return "drawing", "drawing_title"
+    if _title_has(title, INDEX_MARKERS):
+        return "sheet", "index"
     pick = pick_type_with_overrides(title)
     if pick["confidence"] == "high":
         bucket = TYPE_TO_BUCKET.get(pick["type"])

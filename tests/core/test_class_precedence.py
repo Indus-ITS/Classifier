@@ -1,0 +1,35 @@
+from classifier.core.classify import normalize_doc_type
+
+
+def _cls(title):
+    return normalize_doc_type("NULL", title)[0]
+
+
+def test_standard_drawing_titles_are_drawing():
+    assert _cls("STANDARD DRAWING REBAR ARRANGEMENT") == "drawing"
+    assert _cls("STANDARD DRAWING ANCHOR BOLT DETAILS") == "drawing"
+
+
+def test_drawing_wins_over_index_and_list():
+    assert _cls("3D MODEL DESIGN AREA/MODEL INDEX DRAWING AREA-2") == "drawing"
+    assert _cls("STANDARD DRAWING MEMBER LIST") == "drawing"
+
+
+def test_sketch_title_is_drawing():
+    assert _cls("PIPING TIE-IN SKETCHES (25 SHEETS)") == "drawing"
+
+
+def test_index_titles_are_sheet():
+    assert _cls("INSTRUMENT INDEX") == "sheet"
+    assert _cls("INSTRUMENT INDEX - SAHIL CDS") == "sheet"
+    assert _cls("ISO INDEX") == "sheet"
+    assert _cls("ISOMETRIC INDEX") == "sheet"
+
+
+def test_prose_guard_still_wins_over_new_rules():
+    assert _cls("HAZARDOUS AREA CLASSIFICATION SCHEDULE") == "document"
+    assert _cls("RELAY SETTING SCHEDULE SUBSTATION 4-SAHIL CDS") == "document"
+
+
+def test_plain_isometrics_stay_drawing():
+    assert _cls("PIPING ISOMETRICS FOR SAHIL CDS") == "drawing"

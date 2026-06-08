@@ -21,4 +21,5 @@ def test_classify_record_uses_type_as_discipline_hint():
     # returns a FieldResult triple with reasons.
     res = classify_record(Record(title="ISOMETRIC DRAWING"))
     assert res.doc_type.reason in ("via_keyword", "via_override", "defaulted",
-                                   "existing")
+                                   "existing", "drawing_title", "index",
+                                   "prose_guard", "prefer_sheet")
