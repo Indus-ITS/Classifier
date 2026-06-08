@@ -56,3 +56,21 @@ def test_genuine_documents_unchanged():
 def test_genuine_sheets_unchanged():
     assert _cls("VALVE LIST") == "sheet"
     assert _cls("MTO FOR PIPES AND FITTINGS") == "sheet"
+
+
+from classifier.core.classify import classify_record
+from classifier.core.record import Record
+
+
+def _rec_cls(title):
+    return classify_record(Record(title=title)).doc_type.value
+
+
+def test_classify_record_end_to_end():
+    assert _rec_cls("STANDARD DRAWING REBAR ARRANGEMENT") == "drawing"
+    assert _rec_cls("INSTRUMENT INDEX") == "sheet"
+    assert _rec_cls("LINE LIST") == "sheet"
+    assert _rec_cls("PIPING & INSTRUMENT DIAGRAM") == "drawing"
+    assert _rec_cls("CABLE SIZING CALCULATION") == "document"
+    assert _rec_cls("VALVE LIST") == "sheet"
+    assert _rec_cls("HAZARDOUS AREA CLASSIFICATION SCHEDULE") == "document"
