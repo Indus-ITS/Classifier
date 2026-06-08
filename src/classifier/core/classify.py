@@ -52,12 +52,12 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
     if _title_has(title, INDEX_MARKERS):
         return "sheet", "index"
     pick = pick_type_with_overrides(title)
-    if pick["confidence"] == "high":
-        bucket = TYPE_TO_BUCKET.get(pick["type"])
-        if bucket is not None:
-            reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
-            cls = doc_type_for_bucket(bucket)
-            return cls, reason_tag
+    bucket = TYPE_TO_BUCKET.get(pick["type"])
+    if pick["confidence"] == "high" and bucket is not None:
+        reason_tag = "via_override" if pick["reason"] == "override" else "via_keyword"
+        return doc_type_for_bucket(bucket), reason_tag
+    if bucket is not None and doc_type_for_bucket(bucket) == "sheet":
+        return "sheet", "prefer_sheet"
     return "document", "defaulted"
 
 

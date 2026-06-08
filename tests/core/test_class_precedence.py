@@ -33,3 +33,26 @@ def test_prose_guard_still_wins_over_new_rules():
 
 def test_plain_isometrics_stay_drawing():
     assert _cls("PIPING ISOMETRICS FOR SAHIL CDS") == "drawing"
+
+
+def test_line_list_prefers_sheet():
+    assert _cls("LINE LIST") == "sheet"
+
+
+def test_low_confidence_sheet_type_prefers_sheet():
+    assert normalize_doc_type("NULL", "LINE LIST")[1] == "prefer_sheet"
+
+
+def test_low_confidence_nonsheet_stays_document():
+    assert _cls("MISCELLANEOUS NOTE") == "document"
+
+
+def test_genuine_documents_unchanged():
+    assert _cls("CABLE SIZING CALCULATION") == "document"
+    assert _cls("MATERIAL REQUISITION FOR CS & LTCS") == "document"
+    assert _cls("SPECIFICATION FOR LV POWER, CONTROL") == "document"
+
+
+def test_genuine_sheets_unchanged():
+    assert _cls("VALVE LIST") == "sheet"
+    assert _cls("MTO FOR PIPES AND FITTINGS") == "sheet"
