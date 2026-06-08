@@ -39,10 +39,13 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
             return "sheet", "existing"
         if v in DOCUMENT_ALIASES:
             return "document", "existing"
-    if _title_has(title, PROSE_DOC_PHRASES):
-        return "document", "prose_guard"
+    # Drawing words (DRAWING/SKETCH/LAYOUT) are structural nouns and win
+    # over the prose guard — "HAZARDOUS AREA CLASSIFICATION LAYOUT" is a
+    # layout drawing, not the prose schedule.
     if _title_has(title, DRAWING_TITLE_MARKERS):
         return "drawing", "drawing_title"
+    if _title_has(title, PROSE_DOC_PHRASES):
+        return "document", "prose_guard"
     if _title_has(title, INDEX_MARKERS):
         return "sheet", "index"
     pick = pick_type_with_overrides(title)

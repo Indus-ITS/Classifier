@@ -6,12 +6,17 @@ logic lives in classify.normalize_doc_type.
 """
 from __future__ import annotations
 
-# A title naming a DRAWING (or SKETCH) is a drawing, even when it also
-# carries a LIST/INDEX/REGISTER word. Canonicalization depluralizes
-# DRAWINGS->DRAWING and SKETCHES->SKETCH, so the singular forms suffice.
+# A title naming a DRAWING / SKETCH / LAYOUT is a drawing, even when it
+# also carries a prose or LIST/INDEX/REGISTER word (e.g. "HAZARDOUS AREA
+# CLASSIFICATION LAYOUT" is a layout drawing, not the prose schedule).
+# Canonicalization depluralizes DRAWINGS->DRAWING etc., so singular forms
+# suffice. NOTE: PLAN is deliberately NOT a marker — "HSE PLAN" /
+# "EXECUTION PLAN" are management documents, while plan-view *drawings*
+# already classify via the type scorer (DAL/DPP/...).
 DRAWING_TITLE_MARKERS: tuple[tuple[str, ...], ...] = (
     ("DRAWING",),
     ("SKETCH",),
+    ("LAYOUT",),
 )
 
 # An INDEX title is a tabular sheet (INSTRUMENT INDEX, ISO INDEX, ...).

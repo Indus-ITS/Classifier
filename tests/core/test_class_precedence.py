@@ -74,3 +74,51 @@ def test_classify_record_end_to_end():
     assert _rec_cls("CABLE SIZING CALCULATION") == "document"
     assert _rec_cls("VALVE LIST") == "sheet"
     assert _rec_cls("HAZARDOUS AREA CLASSIFICATION SCHEDULE") == "document"
+
+
+# --- Hardening: LAYOUT is a drawing word and wins over the prose guard,
+#     but PLAN is NOT a drawing word (HSE/EXECUTION PLANs are documents). ---
+
+def test_layout_wins_over_prose_guard():
+    # "HAZARDOUS AREA" prose phrase must NOT capture a layout DRAWING.
+    assert _cls("HAZARDOUS AREA CLASSIFICATION LAYOUT - SAHIL CDS") == "drawing"
+    assert _cls("HAZARDOUS AREA CLASSIFICATION LAYOUT  - SAHIL CDS (2 SHEETS)") == "drawing"
+
+
+def test_hazardous_area_schedule_stays_document():
+    # Same prose subject, but a SCHEDULE (no drawing word) is a document.
+    assert _cls("HAZARDOUS AREA CLASSIFICATION SCHEDULE") == "document"
+
+
+def test_site_layout_is_drawing_not_defaulted():
+    assert _cls('SITE LAYOUT - 6" PROPOSED WATER DISPOSAL FLOW LINE FROM SAHIL') == "drawing"
+
+
+def test_representative_layout_titles_are_drawing():
+    for t in [
+        "F&G DETECTORS LOCATION LAYOUT - SAHIL CDS",
+        "ELECTRICAL EQUIPMENT LAYOUT -SUBSTATION NO. 4 SAHIL CDS",
+        "PIPING LAYOUT FOR CDS AREA",
+        "EARTHING LAYOUT PLANT AREA-2 - SAHIL CDS",
+        "ESCAPE ROUTES LAYOUT",
+    ]:
+        assert _cls(t) == "drawing", t
+
+
+def test_plan_is_not_a_drawing_word():
+    # PLAN is ambiguous; HSE / management plans are documents (prose guard).
+    assert _cls("HSE PLAN") == "document"
+    assert _cls("DESIGN HSE PLAN") == "document"
+    assert _cls("SITE HSE PLAN") == "document"
+
+
+def test_prose_docs_unaffected_by_reorder():
+    for t in [
+        "HAZARD & EFFECT REGISTER",
+        "HSE ACTION TRACKING REGISTER",
+        "RELAY SETTING SCHEDULE SUBSTATION 4-SAHIL CDS",
+        "SPECIALITY ITEMS LIST",
+        "LIST OF ENGINEERING DELIVERABLES",
+        "LIST OF PIPING SPECIALTY ITEMS",
+    ]:
+        assert _cls(t) == "document", t
