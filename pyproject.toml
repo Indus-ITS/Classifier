@@ -27,3 +27,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Resolve tests against src/classifier via importlib, so an untracked
+# root-level integration shim (app.services copy) cannot shadow the
+# package during collection.
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "--import-mode=importlib"
+testpaths = ["tests"]
