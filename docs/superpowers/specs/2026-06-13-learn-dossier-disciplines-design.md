@@ -208,10 +208,10 @@ type_hint in TYPE_TO_DISCIPLINE (7 pure types) ?
 On `input/_document__202606051455.csv`, treating every source-null row as blank:
 
 - **266** rows null in source → **126 filled (47%)**, **140 still null**.
-- Fill reasons: `via_keyword` **124**, `via_type` **2**. The keyword re-key +
+- Fill reasons: `via_keyword` **120**, `via_type` **6**. The keyword re-key +
   expansion did the heavy lifting; most pure-type docs already classify by
   title, so the fallback only rescues the few with blank/garbage titles.
-- Full test suite: **159 passed**. No existing test needed id reconciliation —
+- Full test suite: **160 passed**. No existing test needed id reconciliation —
   the prior tests treat `discipline_id` as a preserved input, not a classifier
   output, so the re-key introduced no regressions.
 
