@@ -10,6 +10,7 @@ Each helper takes ``(existing_value, title)`` and returns ``(value, reason)``.
 from __future__ import annotations
 
 from classifier.config.buckets import TYPE_TO_BUCKET
+from classifier.config.type_to_discipline import TYPE_TO_DISCIPLINE
 from classifier.config.prose_guard import PROSE_DOC_PHRASES
 from classifier.config.drawing_markers import DRAWING_TITLE_MARKERS, INDEX_MARKERS
 from classifier.core.folding import doc_type_for_bucket
@@ -71,15 +72,20 @@ def fill_type(row_type: str, title: str) -> tuple[str, str]:
 
 def fill_discipline(row_disc: str, title: str,
                     type_hint: str = "") -> tuple[str, str]:
-    """Return ``(value, reason)``. reason: preserved / via_keyword / miss.
+    """Return ``(value, reason)``. reason: preserved / via_keyword / via_type / miss.
 
     ``value`` is the discipline_id as a decimal string when found, else "".
+    Falls back to a pure type->discipline mapping when title keywords do not
+    yield a high-confidence discipline (the value that would otherwise be a miss).
     """
     if not is_empty(row_disc):
         return str(row_disc).strip(), "preserved"
     pick = pick_discipline_with_overrides(title, type_hint=type_hint or None)
     if pick["confidence"] == "high" and pick["discipline_id"] is not None:
         return str(pick["discipline_id"]), "via_keyword"
+    fb = TYPE_TO_DISCIPLINE.get(type_hint.strip().upper()) if type_hint else None
+    if fb is not None:
+        return str(fb), "via_type"
     return "", "miss"
 
 
