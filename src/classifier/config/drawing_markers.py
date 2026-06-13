@@ -17,6 +17,9 @@ DRAWING_TITLE_MARKERS: tuple[tuple[str, ...], ...] = (
     ("DRAWING",),
     ("SKETCH",),
     ("LAYOUT",),
+    # A titled DIAGRAM is a drawing (P&ID, SLD, loop / block / wiring /
+    # protection & metering / cause-&-effect diagrams all fold to Drawings).
+    ("DIAGRAM",),
 )
 
 # An INDEX title is a tabular sheet (INSTRUMENT INDEX, ISO INDEX, ...).

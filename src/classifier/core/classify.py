@@ -30,18 +30,17 @@ def _title_has(title: str, markers: tuple[tuple[str, ...], ...]) -> bool:
     return any(_phrase_matches(tokens, list(m)) for m in markers)
 
 
-def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
-    """Return ``(normalized, reason)``. reason: existing / via_keyword / via_override / defaulted."""
-    if not is_empty(value):
-        v = str(value).strip().lower()
-        if v in DRAWING_ALIASES:
-            return "drawing", "existing"
-        if v in SHEET_ALIASES:
-            return "sheet", "existing"
-        if v in DOCUMENT_ALIASES:
-            return "document", "existing"
-    # Drawing words (DRAWING/SKETCH/LAYOUT) are structural nouns and win
-    # over the prose guard — "HAZARDOUS AREA CLASSIFICATION LAYOUT" is a
+# Detection reasons confident enough to override a generic source
+# ``doc_type="document"`` (a common ingest default). ``prefer_sheet`` and
+# ``defaulted`` are excluded so a weak guess never overturns an explicit value.
+_CONFIDENT_DOCTYPE_REASONS = frozenset(
+    {"drawing_title", "index", "via_override", "via_keyword"})
+
+
+def _detect_doc_type(title: str) -> tuple[str, str]:
+    """Infer ``(doc_type, reason)`` from the title alone (no existing value)."""
+    # Drawing words (DRAWING/SKETCH/LAYOUT/DIAGRAM) are structural nouns and
+    # win over the prose guard — "HAZARDOUS AREA CLASSIFICATION LAYOUT" is a
     # layout drawing, not the prose schedule.
     if _title_has(title, DRAWING_TITLE_MARKERS):
         return "drawing", "drawing_title"
@@ -57,6 +56,27 @@ def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
     if bucket is not None and doc_type_for_bucket(bucket) == "sheet":
         return "sheet", "prefer_sheet"
     return "document", "defaulted"
+
+
+def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
+    """Return ``(normalized, reason)``. reason: existing / via_keyword / via_override / drawing_title / index / prose_guard / prefer_sheet / defaulted.
+
+    Explicit ``drawing``/``sheet`` values are always preserved. A generic
+    ``document`` is treated as a weak ingest default: if the title confidently
+    detects a drawing or sheet, that wins; otherwise the document is kept.
+    """
+    if not is_empty(value):
+        v = str(value).strip().lower()
+        if v in DRAWING_ALIASES:
+            return "drawing", "existing"
+        if v in SHEET_ALIASES:
+            return "sheet", "existing"
+        if v in DOCUMENT_ALIASES:
+            cls, reason = _detect_doc_type(title)
+            if cls in ("drawing", "sheet") and reason in _CONFIDENT_DOCTYPE_REASONS:
+                return cls, reason
+            return "document", "existing"
+    return _detect_doc_type(title)
 
 
 def fill_type(row_type: str, title: str) -> tuple[str, str]:

@@ -51,6 +51,8 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("GENERAL", "ARRANGMENT"),
         ("GENERAL", "ARRANGEMENT", "DRAWING"),
         ("PIPING", "GENERAL", "ARRANGEMENT"),
+        ("GADS",),          # general arrangement drawings (GADs Construction)
+        ("GAD",),
     ),
     "PRO": (
         ("PROCEDURE",),
@@ -69,6 +71,8 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
     ),
     "MTO": (
         ("MTO",),
+        ("BOQ",),
+        ("BILL", "OF", "QUANTITIES"),
     ),
     "DAS": (
         ("DATASHEET",),
@@ -76,12 +80,15 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("MECHANICAL", "DATASHEET"),
         ("INSTRUMENT", "DATASHEET"),
         ("ELECTRICAL", "DATASHEET"),
+        ("VALVE", "DS"),        # "<tag>_Valve DS" filename style
+        ("LEGEND", "SHEET"),    # legend sheets
     ),
     "PHL": (
         ("PHILOSOPHY",),
     ),
     "REG": (
         ("REGISTER",),
+        ("RISK", "MATRIX"),
     ),
     "SCH": (
         ("SCHEDULE",),
@@ -93,6 +100,7 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("BLOCK", "DIAGRAM"),
         ("SCHEMATIC", "BLOCK", "DIAGRAM"),
         ("ARCHITECTURE", "DIAGRAM"),
+        ("ARCH", "DIAGRAM"),
     ),
     # Detail drawings — tank/structural fabrication-detail family.
     # Activated per user direction after the override pass found 28
@@ -111,13 +119,30 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("BRACKET", "DETAILS"),
         ("CLEATS", "DETAILS"),
         ("HANDRAIL", "DETAILS"),
+        ("SECTIONAL", "DETAILS"),
+        ("SECTIONAL", "DETAIL"),
     ),
     # Generic construction drawings - "CONSTRUCTION DRAWING (TYP)..." titles.
     "DWG": (
         ("CONSTRUCTION", "DRAWING"),
+        ("WIRING", "DIAGRAM"),
+        ("LOOP", "DIAGRAM"),
+        ("PROTECTION", "AND", "METERING", "DIAGRAM"),
+        ("METERING", "DIAGRAM"),
+        ("DEMOLITION",),                # demolition drawings
     ),
     "DPP": (
         ("PLOT", "PLAN"),
+    ),
+    # Specifications issued under the ADNOC AGES-SP series whose title may
+    # carry only the subject word (CONCRETE/STEEL/DB) not "specification".
+    "SPC": (
+        ("AGES", "SP"),
+    ),
+    # Instruction to Bidders (tender document).
+    "ITB": (
+        ("INSTRUCTION", "TO", "BIDDERS"),
+        ("ITB",),
     ),
     # Plan documents (not plan-view drawings). Specific 2-grams only —
     # avoid bare ("PLAN",) so structural plan-view drawings like
@@ -134,10 +159,13 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("MOBILIZATION", "PLAN"),
         ("COMMISSIONING", "PLAN"),
         ("EMERGENCY", "RESPONSE", "PLAN"),
+        ("REPORTING", "PLAN"),
     ),
     "DAL": (
         ("ELECTRICAL", "EQUIPMENT", "LAYOUT"),
         ("ELECTRICAL", "CABLE", "ROUTING"),
+        ("CABLE", "ROUTING"),
+        ("INSTRUMENT", "CABLE", "ROUTING"),
     ),
 }
 

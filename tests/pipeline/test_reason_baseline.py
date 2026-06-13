@@ -9,9 +9,12 @@ from classifier.pipeline._row import (
 def test_doc_type_reasons():
     assert normalize_doc_type("drawing", "X")[1] == "existing"
     assert normalize_doc_type("", "ZZZ NONSENSE")[1] == "defaulted"
+    # "DIAGRAM" is a drawing marker, so a P&ID title resolves to a drawing
+    # via the marker (drawing_title) ahead of the PID type override.
     assert normalize_doc_type("", "PIPING AND INSTRUMENT DIAGRAM")[1] in (
-        "via_keyword", "via_override",
+        "via_keyword", "via_override", "drawing_title",
     )
+    assert normalize_doc_type("", "PIPING AND INSTRUMENT DIAGRAM")[0] == "drawing"
 
 
 def test_fill_type_reasons():

@@ -70,6 +70,7 @@ TYPE_TO_BUCKET: dict = {
     "PRO": "Procedures_Plans", "PLN": "Procedures_Plans", "PHL": "Procedures_Plans",
     "REQ": "Documents",
     "TBE": "Documents",     # Technical Bid Evaluation
+    "ITB": "Documents",     # Instruction to Bidders (tender document)
     "ISO": "Isometrics",    # Isometric drawings (bucket exists)
     "DDT": "Drawings",      # Detail drawings (foundation/structural/roof)
 }
