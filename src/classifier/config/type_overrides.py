@@ -144,6 +144,15 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("INSTRUCTION", "TO", "BIDDERS"),
         ("ITB",),
     ),
+    # Single line diagram, often abbreviated SLD (frequently inside parens).
+    "DSL": (
+        ("SLD",),
+        ("SINGLE", "LINE", "DIAGRAM"),
+    ),
+    # Review/constructability worksheets are treated as standards.
+    "STD": (
+        ("WORKSHEET",),
+    ),
     # Plan documents (not plan-view drawings). Specific 2-grams only —
     # avoid bare ("PLAN",) so structural plan-view drawings like
     # "PIPE RACK PLANS AND DETAIL" are not swept up.

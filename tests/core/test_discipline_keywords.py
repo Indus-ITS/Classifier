@@ -49,6 +49,12 @@ def _id(title):
     ("DATA SHEET FOR CONTROL VALVES AND SELF ACTING REGULATORS", 6),
     ("VALVE LIST", 8),
     ("FOUNDATION FOR PRODUCED WATER TANK", 1),  # FOUNDATION beats WATER TANK
+    # --- real-world doc-number title vocabulary (test snapshot) ---
+    ("Vendor Scheme Existing J11 Motor Feeder", 3),     # FEEDER -> Electrical
+    ("Existing 415V Swbd SS-N Details", 3),             # SWBD -> Electrical
+    ("415V Switchgear Single Line Diagram", 3),
+    ("AD41-16.0-D-42783 CO Loading Pump J8", 7),        # equipment -> Mechanical
+    ("Fuel Gas Scrubber No 5 and Filter", 7),
 ])
 def test_titles_resolve_to_canonical_discipline(title, expected):
     assert _id(title) == expected

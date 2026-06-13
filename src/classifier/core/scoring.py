@@ -41,12 +41,34 @@ _DASHES = str.maketrans({
     "–": " ", "—": " ", "―": " ",
     "−": " ", "\xa0": " ",
 })
-_PARENS_RE = re.compile(r"\([^)]*\)")
+_PARENS_RE = re.compile(r"\(([^)]*)\)")
 _REV_NOISE_RE = re.compile(
     r"\b(\d+\s*SHEETS?|REV\s*\d+|SHEET\s+\d+\s+OF\s+\d+)\b"
 )
 _PUNCT_KEEP_AMP_SLASH_RE = re.compile(r"[^A-Z0-9&/ ]+")
 _WS_RE = re.compile(r"\s+")
+
+# Parenthetical groups are usually rev/issue/sheet noise — "(Rev Rev-2)",
+# "(11 SHEETS)", "(NEW)", "(3.3kV)". Those are dropped. A group carrying a
+# real word (e.g. "(SS-N LV SLD Mod)", "(Vendor Scheme-Spare Feeders)") is
+# unwrapped and kept, so the signal inside it survives canonicalization.
+_PAREN_NOISE_WORDS = frozenset({
+    "REV", "REVISION", "REVISED", "SHEET", "SHEETS", "SHT", "SHTS",
+    "TYP", "TYPICAL", "DRAFT", "FINAL", "DRAWN", "ISSUE", "ISSUED",
+    "IFD", "IFC", "IFR", "IFA", "IFI", "IFT", "AFC", "AFD", "HOLD", "CIRC",
+    "NEW", "OLD", "PHASE", "STATUS", "DATED", "DATE", "REVISE", "EXISTING",
+})
+_PAREN_ALPHA_RE = re.compile(r"[A-Z]{2,}")
+
+
+def _strip_noise_parens(s: str) -> str:
+    """Drop noise-only parentheticals; unwrap (keep) ones with a real word."""
+    def repl(m: "re.Match[str]") -> str:
+        inner = m.group(1)
+        words = [w for w in _PAREN_ALPHA_RE.findall(inner)
+                 if w not in _PAREN_NOISE_WORDS]
+        return f" {inner} " if words else " "
+    return _PARENS_RE.sub(repl, s)
 
 
 def canonicalize_title(raw: str) -> list[str]:
@@ -55,7 +77,7 @@ def canonicalize_title(raw: str) -> list[str]:
     s = unicodedata.normalize("NFKC", str(raw))
     s = s.translate(_DASHES)
     s = s.upper()
-    s = _PARENS_RE.sub(" ", s)
+    s = _strip_noise_parens(s)
     s = _REV_NOISE_RE.sub(" ", s)
     s = _PUNCT_KEEP_AMP_SLASH_RE.sub(" ", s)
     s = _WS_RE.sub(" ", s).strip()

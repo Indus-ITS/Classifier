@@ -24,9 +24,22 @@ from classifier.core.classify import classify_record
     ("Instruction to Bidders_A", "ITB"),
     ("ADNOC Corporate Risk Matrix", "REG"),
     ("Energy Monitoring and Reporting Plan", "PLN"),
+    ("constructability Review worksheet", "STD"),       # worksheet -> standard
+    ("AD200-16.0-E-40885_IFD (SS-N LV SLD Mod)", "DSL"),  # SLD recovered from parens
 ])
 def test_type_vocabulary(title, expected_type):
     assert fill_type("", title)[0] == expected_type
+
+
+def test_meaningful_parens_kept_noise_parens_stripped():
+    from classifier.core.scoring import canonicalize_title
+    # noise parens dropped
+    assert "REV" not in canonicalize_title("Foo Bar (Rev Rev-2)")
+    assert canonicalize_title("Foo (11 SHEETS)") == ["FOO"]
+    assert "NEW" not in canonicalize_title("Utility Flow Diagram (NEW) LP")
+    # meaningful parens unwrapped and kept
+    assert "SLD" in canonicalize_title("AD200-E-40885 (SS-N LV SLD Mod)")
+    assert "SWBD" in canonicalize_title("App 2.1 (Existing 415V Swbd SS-N Details)")
 
 
 # --- doc_type override of a generic "document" ------------------------------
