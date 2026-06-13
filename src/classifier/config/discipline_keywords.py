@@ -1,67 +1,75 @@
-"""Hand-maintained; ids validated against input/disciplines.csv (training retired)."""
+"""Hand-maintained per-discipline title scoring.
+
+Keys are canonical discipline ids (input/disciplines.csv). Authored from the
+learn/*.xlsx dossiers (see docs/superpowers/specs/2026-06-13-learn-dossier-
+disciplines-design.md). Project/doc-no noise and cross-discipline type words
+are deliberately excluded. Weights follow core.scoring thresholds: a lone
+distinctive phrase weighs >= 2.5 so it classifies at "high" alone.
+"""
 from __future__ import annotations
 
 UNTRAINED_DISCIPLINES: frozenset[int] = frozenset()
 
 DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]] = {
-    1: (
-        ('NOTES', 2.8904),
-        ('CALCULATION NOTES', 2.7081),
-        ('FOUNDATION', 2.4849),
-        ('MISC', 1.9459),
-        ('RACK', 1.9459),
-        ('LAYOUT PLAN', 1.6679),
-        ('MISC PIPE', 1.6094),
-        ('PIPE RACK', 1.6094),
-        ('TOPOGRAPHICAL', 1.6094),
-        ('FOUNDATION DETAILS', 1.3863),
+    1: (  # Civil
+        ('FOUNDATION', 3.2),
+        ('FOUNDATION DETAILS', 2.6),
+        ('STEEL STRUCTURE', 3.0),
+        ('STEEL', 2.5),
+        ('STRUCTURE', 2.5),
+        ('CIVIL GENERAL ARRANGEMENT', 2.8),
+        ('GENERAL ARRANGEMENT LAYOUT', 2.6),
+        ('CIVIL', 2.4),
+        ('TOPOGRAPHICAL', 2.3),
+        ('PIPE RACK', 2.0),
     ),
-    4: (
-        ('SUBSTATION', 2.5649),
-        ('ELECTRICAL', 2.3859),
-        ('LIGHTING', 2.1972),
-        ('SUBSTATION NO', 2.1972),
-        ('EARTHING', 2.0794),
-        ('LINE DIAGRAM', 2.0794),
-        ('SINGLE', 2.0794),
-        ('SINGLE LINE', 2.0794),
-        ('SINGLE LINE DIAGRAM', 2.0794),
-        ('CDS SUBSTATION', 1.9459),
+    3: (  # Electrical
+        ('SINGLE LINE DIAGRAM', 3.5),
+        ('SINGLE LINE', 3.2),
+        ('LINE DIAGRAM', 2.8),
+        ('SUBSTATION', 3.0),
+        ('SUBSTATION NO', 2.6),
+        ('ELECTRICAL', 2.8),
+        ('LIGHTING', 2.4),
+        ('EARTHING', 2.4),
     ),
-    7: (
-        ('TRANSMITTERS', 1.9459),
-        ('ICSS', 1.6094),
-        ('MULTIPHASE FLOW', 1.6094),
-        ('MULTIPHASE FLOW METER', 1.6094),
-        ('ACTING', 1.3863),
-        ('ACTING REGULATORS', 1.3863),
-        ('AREA FLOWMETER', 1.3863),
-        ('DEVICES', 1.3863),
-        ('ELECTRONIC', 1.3863),
-        ('ELECTRONIC TRANSMITTERS', 1.3863),
+    6: (  # I&C
+        ('TRANSMITTERS', 2.8),
+        ('ELECTRONIC TRANSMITTERS', 2.8),
+        ('ACTING REGULATORS', 2.6),
+        ('PRESSURE GAUGES', 2.5),
+        ('ROTAMETER', 2.5),
+        ('MULTIPHASE FLOW METER', 2.6),
+        ('AREA FLOWMETER', 2.4),
+        ('ICSS', 2.4),
     ),
-    10: (
-        ('DISPOSAL TANK', 3.0995),
-        ('WATER DISPOSAL TANK', 3.0995),
-        ('TANK', 2.7658),
-        ('ROOF', 2.1972),
-        ('WATER DISPOSAL', 2.1625),
-        ('SHELL', 1.9459),
-        ('EOT', 1.6094),
-        ('EOT CRANE', 1.6094),
-        ('NOZZLES', 1.6094),
-        ('NOZZLES DETAILS', 1.6094),
+    7: (  # Mechanical (incl. tanks/vessels, ex-id-10)
+        ('WATER DISPOSAL TANK', 3.2),
+        ('DISPOSAL TANK', 2.8),
+        ('WATER PUMPS', 2.6),
+        ('MECHANICAL DATA SHEET', 2.6),
+        ('MECHANICAL', 2.5),
+        ('EOT CRANE', 2.4),
+        ('NOZZLES DETAILS', 2.2),
+        ('SHELL', 2.0),
     ),
-    13: (
-        ('PIPING LAYOUT', 3.2189),
-        ('FITTINGS', 2.5649),
-        ('BID', 2.3398),
-        ('TECHNICAL BID', 2.3398),
-        ('TECHNICAL', 2.2335),
-        ('CDS AREA', 2.1972),
-        ('CONSTRUCTION DRAWING', 2.1972),
-        ('BID EVALUATION', 2.1889),
-        ('TECHNICAL BID EVALUATION', 2.1889),
-        ('VALVES', 2.1747),
+    8: (  # Piping
+        ('PIPING LAYOUT DRAWING', 3.4),
+        ('PIPING LAYOUT', 3.0),
+        ('PIPING ISOMETRIC', 3.0),
+        ('ISOMETRIC', 2.6),
+        ('PIPING GA', 2.8),
+        ('PIPING GA CONSTRUCTION', 2.8),
+        ('VALVES', 2.4),
+        ('FITTINGS', 2.4),
+    ),
+    11: (  # Process
+        ('PIPING & INSTRUMENT', 3.5),
+        ('INSTRUMENT DIAGRAM', 3.2),
+        ('PROCESS FLOW DIAGRAM', 3.2),
+        ('FLOW DIAGRAM', 2.6),
+        ('PROCESS', 2.4),
+        ('MATERIAL SELECTION DIAGRAM', 2.8),
+        ('SAFEGUARDING', 2.4),
     ),
 }
