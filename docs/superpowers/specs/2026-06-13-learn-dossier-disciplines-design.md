@@ -130,37 +130,47 @@ Ambiguous types are **excluded** (validated shares): DAS 46%, REP 54%, SPC 35%,
 LST 42%, DAL 53%, CAL 50%, DWG 46%, REQ 55%, SCH 50%. Including them would inject
 discipline errors. `support_count`/`share` comments are retained for audit.
 
-### 4. `core/discipline_scoring.py` — gated type fallback
+### 4. `core/classify.py::fill_discipline` — gated type fallback
 
-Current behavior: a `type_hint` in `TYPE_TO_DISCIPLINE` adds `TYPE_HINT_BONUS`
-(+2) to that discipline's score before `pick`. **Preserved** — when the title
-*does* score a discipline, the hint still nudges it.
+The `+2` bonus inside `score_disciplines` (driven by `TYPE_TO_DISCIPLINE`) is
+**preserved** — when the title *does* score a discipline, the type hint still
+nudges it, and with the table now holding 7 pure types it reinforces the right
+discipline.
 
-New behavior: in `pick_discipline_with_overrides`, when the keyword pick is
-`confidence == "none"` (no discipline scored) **and** the type maps to a discipline
-in `TYPE_TO_DISCIPLINE`, return that discipline with:
-- `discipline_id` = mapped id,
-- `confidence` = `"low"`,
-- `reason` = `"type-fallback"` (distinct from `"keyword"` / `"miss"` so the
-  source is auditable in output).
+The fallback is added at the **write gate**, `fill_discipline`, because that is
+the only place that currently demands `confidence == "high"` before writing a
+discipline. New logic, after the existing keyword branch:
 
-This keeps title keywords as the primary signal and type as a recovery net.
+```python
+pick = pick_discipline_with_overrides(title, type_hint=type_hint or None)
+if pick["confidence"] == "high" and pick["discipline_id"] is not None:
+    return str(pick["discipline_id"]), "via_keyword"
+fb = TYPE_TO_DISCIPLINE.get(type_hint.strip().upper()) if type_hint else None
+if fb is not None:
+    return str(fb), "via_type"
+return "", "miss"
+```
+
+- Fires only when the keyword pick is **not** high-confidence (i.e. the value
+  that would otherwise be dropped as a miss). It never overrides a *written*
+  keyword discipline.
+- `reason = "via_type"` (consistent with the existing `via_keyword` /
+  `preserved` / `miss` vocabulary) so the source is auditable.
+- Only the 7 pure types are in `TYPE_TO_DISCIPLINE`, so ambiguous types
+  (DAS/REP/SPC/…) never trigger it.
 
 ## Data flow
 
 ```
-title, type_hint
-   │
+fill_discipline(row_disc, title, type_hint)
+   │ row_disc present ──► (row_disc, "preserved")
    ▼
-score_disciplines(title, type_hint)         # keyword scores + (+2 hint bonus)
-   │
-   ▼
-pick_discipline(...)  ── confidence != none ──► {discipline_id, "keyword"}
-   │ confidence == none
-   ▼
-type_hint in TYPE_TO_DISCIPLINE ?
-   │ yes ──► {discipline_id (mapped), "low", "type-fallback"}
-   │ no  ──► {None, "miss"}
+score_disciplines(title, type_hint) -> pick   # keyword scores + (+2 hint bonus)
+   │ pick high ──► (discipline_id, "via_keyword")
+   ▼ pick not high
+type_hint in TYPE_TO_DISCIPLINE (7 pure types) ?
+   │ yes ──► (mapped discipline_id, "via_type")
+   │ no  ──► ("", "miss")
 ```
 
 ## Error handling & edge cases
@@ -177,8 +187,9 @@ type_hint in TYPE_TO_DISCIPLINE ?
 - Update `tests/core/test_class_precedence.py` and any scoring snapshot to the
   **corrected discipline ids** (3/6/7/8/11 instead of legacy 4/7/10/13).
 - Add cases for the type fallback: (a) blank/garbage title + `PID` → 11 with
-  `reason="type-fallback"`; (b) ambiguous type (`DAS`) + blank title → null;
-  (c) title that scores a discipline + conflicting type hint → keyword wins.
+  `reason="via_type"`; (b) ambiguous type (`DAS`) + blank title → null
+  (`"miss"`); (c) title that scores a discipline + conflicting type hint →
+  keyword wins.
 - Add a regression asserting Electrical titles (e.g. "SINGLE LINE DIAGRAM")
   now resolve to **id 3**, not 4.
 - Re-run the full suite; expect intentional snapshot churn from the re-key.
