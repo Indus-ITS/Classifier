@@ -20,6 +20,35 @@ def _id(title):
     ("WATER DISPOSAL TANK", 7),                 # Mechanical
     ("ACTING REGULATORS DATA SHEET", 6),        # I&C
     ("TRANSMITTERS DATA SHEET", 6),
+    # --- second tuning pass (still-null recovery) ---
+    ("EARTHING INSTALLATION STANDARDS", 3),     # near-floor weight bump
+    ("CABLE SIZING CALCULATION", 3),
+    ("HSE PLAN", 5),                            # HSE bucket
+    ("FIRE FIGHTING & SAFETY EQUIPMENT LAYOUT", 5),
+    ("HAZOP REPORT", 5),
+    ("F&G DETECTORS LOCATION LAYOUT", 6),       # Fire & Gas DETECTION -> I&C
+    ("FIRE & GAS INPUT/OUTPUT LIST", 6),
+    ("INSTRUMENT INDEX", 6),
+    ("DCS I/O LIST", 6),
+    ("PROCESS DATA SHEET FOR WATER DISPOSAL TANK", 7),  # PROCESS-collision resolved
+    ("PROCESS DATA SHEET FOR MULTI-PHASE FLOW METER", 6),
+    ("PIPING MTO", 8),                          # bare PIPING support
+    ("MATERIAL REQUISITION FOR GATE VALVES", 8),
+    ("STANDARD PIPE SUPPORTS DRAWINGS", 8),
+    ("TOPOGRAPHICAL SURVEY REPORT", 1),         # Civil bump
+    ("3D MODEL EXECUTION PHILOSOPHY", 11),      # CAD/model -> Process
+    # --- third pass (taxonomy decisions on remaining nulls) ---
+    ("OVERALL PLOT PLAN", 8),                   # PLOT PLAN -> Piping
+    ("HAZARDOUS AREA CLASSIFICATION SCHEDULE", 3),  # HAC -> Electrical
+    ("SCOPE OF WORK FOR CATHODIC PROTECTION", 3),   # cathodic -> Electrical
+    ("CORROSION CONTROL AND MATERIAL SELECTION REPORT", 11),  # -> Process
+    ("PROCESS DESIGN BASIS", 11),               # span-order fix
+    ("PROCESS AND UTILITIES DESCRIPTION", 11),
+    ("PROJECT DESIGN BASIS", 4),                # Engineering/Project Mgmt
+    ("EPC OF SAHIL FIELD DEVELOPMENT PROJECT SCOPE OF WORK", 4),
+    ("DATA SHEET FOR CONTROL VALVES AND SELF ACTING REGULATORS", 6),
+    ("VALVE LIST", 8),
+    ("FOUNDATION FOR PRODUCED WATER TANK", 1),  # FOUNDATION beats WATER TANK
 ])
 def test_titles_resolve_to_canonical_discipline(title, expected):
     assert _id(title) == expected

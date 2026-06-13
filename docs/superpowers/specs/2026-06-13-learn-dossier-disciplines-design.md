@@ -205,30 +205,40 @@ type_hint in TYPE_TO_DISCIPLINE (7 pure types) ?
 
 ## Results (measured 2026-06-13 on input snapshot)
 
-On `input/_document__202606051455.csv`, treating every source-null row as blank:
+On `input/_document__202606051455.csv`, treating every source-null row as blank.
+Three tuning passes:
 
-- **266** rows null in source → **126 filled (47%)**, **140 still null**.
-- Fill reasons: `via_keyword` **120**, `via_type` **6**. The keyword re-key +
-  expansion did the heavy lifting; most pure-type docs already classify by
-  title, so the fallback only rescues the few with blank/garbage titles.
-- Full test suite: **160 passed**. No existing test needed id reconciliation —
+| pass | filled / 266 | rate | still null |
+|------|--------------|------|------------|
+| 1 — dossier re-key + type fallback | 126 | 47% | 140 |
+| 2 — title-clue expansion (HSE bucket, instrument/electrical/piping/mech phrases) | 250 | 94% | 16 |
+| 3 — taxonomy decisions (plot-plan→Piping, HAC→Electrical, cathodic→Electrical, corrosion→Process, project-level→Eng-Mgmt) | **258** | **97%** | **8** |
+
+- Final fill reasons: `via_keyword` **249**, `via_type` **9**. Title keywords do
+  almost all the work; the type fallback rescues the few blank/garbage titles.
+- Coverage now spans **8 disciplines**: Civil-1, Electrical-3, Eng-Mgmt-4,
+  HSE-5, I&C-6, Mechanical-7, Piping-8, Process-11.
+- Full test suite: **176 passed**. No existing test needed id reconciliation —
   the prior tests treat `discipline_id` as a preserved input, not a classifier
   output, so the re-key introduced no regressions.
+- A manual scan of all 258 assignments found **no mislabels** (high precision).
 
-The remaining 140 nulls are dominated by the intentionally-excluded ambiguous
-types (REP 25, DAS 17, DAL 14, SPC 13, LST 11). Many carry title-level
-discipline signals (e.g. `EARTHING INSTALLATION STANDARDS`, `INSTRUMENT JUNCTION
-BOX SCHEDULE`, `CABLE ROUTING LAYOUT`) that a future keyword-tuning pass could
-capture — see "Follow-up opportunities".
+### The 8 genuinely-unrecoverable nulls
+
+Left null by design — no reliable title signal:
+`CALCULATION REPORT`, `EQUIPMENT LIST - LOCATION`, `CONSTRUCTABILITY REVIEW
+REPORT`, `CHANGE OVER PHILOSOPHY`, `UTILITY & CHEMICAL CONSUMPTION SUMMARY`
+(generic); `CAUSE & EFFET DIAGRAM…` (misspelled); `SITE VISIT REPORT
+(INSTRUMENTATION)` (the only clue is inside parentheses, which the canonicalizer
+strips); `Write up Process` (bare `PROCESS` is intentionally weighted 2.0 to
+avoid `PROCESS DATA SHEET` collisions, so it can't solo-fire).
 
 ## Follow-up opportunities (not in this scope)
 
-- Lift near-floor single-token weights that currently miss (`EARTHING` 2.4 just
-  under the 2.5 solo floor) or add corroborating phrases.
-- Add I&C/Electrical phrases for the still-null instrument/cable docs
-  (`CABLE ROUTING`, `INSTRUMENT JUNCTION BOX`, `CABLE TRENCH`).
-- Resolve `PROCESS`-token collisions that drop margin below 1.0 (e.g.
-  `PROCESS DATA SHEET FOR WATER DISPOSAL TANK` ties Process vs Mechanical).
+- The pass-2/3 phrases are partly tuned to this project's title conventions
+  (e.g. `GRE`, `FIELD DEVELOPMENT PROJECT`); structural phrases (FOUNDATION,
+  EARTHING, VALVES, SINGLE LINE DIAGRAM) generalise, project-specific ones less
+  so. Re-validate weights when classifying a different project's corpus.
 - Extend keyword coverage to dossier-absent disciplines (QA/QC, Procurement,
   Telecom, HVAC) when labeled data becomes available.
 
