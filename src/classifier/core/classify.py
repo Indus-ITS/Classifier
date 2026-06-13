@@ -80,7 +80,7 @@ def fill_discipline(row_disc: str, title: str,
     """
     if not is_empty(row_disc):
         return str(row_disc).strip(), "preserved"
-    pick = pick_discipline_with_overrides(title, type_hint=type_hint or None)
+    pick = pick_discipline_with_overrides(title)
     if pick["confidence"] == "high" and pick["discipline_id"] is not None:
         return str(pick["discipline_id"]), "via_keyword"
     fb = TYPE_TO_DISCIPLINE.get(type_hint.strip().upper()) if type_hint else None

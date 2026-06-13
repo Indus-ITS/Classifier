@@ -28,3 +28,12 @@ def test_keyword_high_beats_type_fallback():
 
 def test_existing_discipline_preserved():
     assert fill_discipline("8", "anything", type_hint="PID") == ("8", "preserved")
+
+
+def test_type_hint_does_not_demote_high_keyword_discipline():
+    # Civil title scores "high" on its own; a PID type code must not erode its
+    # margin and flip it to the type's discipline (Process). Regression for the
+    # +2 bonus / via_type fallback double-counting bug.
+    assert fill_discipline(
+        "", "CIVIL GENERAL ARRANGEMENT LAYOUT", type_hint="PID"
+    ) == ("1", "via_keyword")
