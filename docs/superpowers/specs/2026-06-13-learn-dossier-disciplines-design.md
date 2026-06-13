@@ -203,6 +203,35 @@ type_hint in TYPE_TO_DISCIPLINE (7 pure types) ?
 - Electrical/Piping/I&C/Process titles resolve to canonical ids.
 - Full test suite green after intentional snapshot updates.
 
+## Results (measured 2026-06-13 on input snapshot)
+
+On `input/_document__202606051455.csv`, treating every source-null row as blank:
+
+- **266** rows null in source → **126 filled (47%)**, **140 still null**.
+- Fill reasons: `via_keyword` **124**, `via_type` **2**. The keyword re-key +
+  expansion did the heavy lifting; most pure-type docs already classify by
+  title, so the fallback only rescues the few with blank/garbage titles.
+- Full test suite: **159 passed**. No existing test needed id reconciliation —
+  the prior tests treat `discipline_id` as a preserved input, not a classifier
+  output, so the re-key introduced no regressions.
+
+The remaining 140 nulls are dominated by the intentionally-excluded ambiguous
+types (REP 25, DAS 17, DAL 14, SPC 13, LST 11). Many carry title-level
+discipline signals (e.g. `EARTHING INSTALLATION STANDARDS`, `INSTRUMENT JUNCTION
+BOX SCHEDULE`, `CABLE ROUTING LAYOUT`) that a future keyword-tuning pass could
+capture — see "Follow-up opportunities".
+
+## Follow-up opportunities (not in this scope)
+
+- Lift near-floor single-token weights that currently miss (`EARTHING` 2.4 just
+  under the 2.5 solo floor) or add corroborating phrases.
+- Add I&C/Electrical phrases for the still-null instrument/cable docs
+  (`CABLE ROUTING`, `INSTRUMENT JUNCTION BOX`, `CABLE TRENCH`).
+- Resolve `PROCESS`-token collisions that drop margin below 1.0 (e.g.
+  `PROCESS DATA SHEET FOR WATER DISPOSAL TANK` ties Process vs Mechanical).
+- Extend keyword coverage to dossier-absent disciplines (QA/QC, Procurement,
+  Telecom, HVAC) when labeled data becomes available.
+
 ## Out of scope
 
 - Disciplines absent from the dossiers (no invented rules).
