@@ -14,7 +14,6 @@ UNTRAINED_DISCIPLINES: frozenset[int] = frozenset()
 DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]] = {
     1: (  # Civil
         ('FOUNDATION', 3.9),
-        ('FOUNDATION DETAILS', 2.6),
         ('STEEL STRUCTURE', 3.0),
         ('STEEL', 2.5),
         ('STRUCTURE', 1.8),
@@ -33,7 +32,6 @@ DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]] = {
         ('SINGLE LINE', 3.2),
         ('LINE DIAGRAM', 2.8),
         ('SUBSTATION', 3.0),
-        ('SUBSTATION NO', 2.6),
         ('ELECTRICAL', 2.8),
         ('ELEC', 2.6),
         ('LIGHTING', 2.7),
@@ -51,7 +49,6 @@ DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]] = {
     ),
     5: (  # HSE / Safety (fire-fighting & safety only; Fire & Gas DETECTION -> I&C)
         ('HSE', 2.7),
-        ('HSE PLAN', 2.8),
         ('HAZOP', 3.0),
         ('HAZID', 3.0),
         ('HAZARD', 2.7),
@@ -72,7 +69,6 @@ DISCIPLINE_KEYWORDS: dict[int, tuple[tuple[str, float], ...]] = {
         ('MULTIPHASE FLOW METER', 3.0),
         ('FLOW METER', 3.0),
         ('FLOWMETER', 3.0),
-        ('AREA FLOWMETER', 2.4),
         ('FIRE & GAS', 2.8),
         ('FIRE AND GAS', 2.8),
         ('F&G', 2.8),
