@@ -19,6 +19,7 @@ def _id(title):
     ("CIVIL GENERAL ARRANGEMENT", 1),
     ("WATER DISPOSAL TANK", 7),                 # Mechanical
     ("ACTING REGULATORS DATA SHEET", 6),        # I&C
+    ("TRANSMITTERS DATA SHEET", 6),
 ])
 def test_titles_resolve_to_canonical_discipline(title, expected):
     assert _id(title) == expected
