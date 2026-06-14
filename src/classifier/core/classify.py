@@ -12,7 +12,10 @@ from __future__ import annotations
 from classifier.config.buckets import TYPE_TO_BUCKET
 from classifier.config.type_to_discipline import TYPE_TO_DISCIPLINE
 from classifier.config.prose_guard import PROSE_DOC_PHRASES
-from classifier.config.drawing_markers import DRAWING_TITLE_MARKERS, INDEX_MARKERS
+from classifier.config.drawing_markers import (
+    DRAWING_TITLE_MARKERS, INDEX_MARKERS,
+    SHEET_HEAD_WORDS, DOCUMENT_HEAD_WORDS, DRAWING_HEAD_WORDS,
+)
 from classifier.core.folding import doc_type_for_bucket
 from classifier.core.discipline_scoring import pick_discipline_with_overrides
 from classifier.core.type_scoring import pick_type_with_overrides, canonicalize_title, _phrase_matches
@@ -34,11 +37,42 @@ def _title_has(title: str, markers: tuple[tuple[str, ...], ...]) -> bool:
 # ``doc_type="document"`` (a common ingest default). ``prefer_sheet`` and
 # ``defaulted`` are excluded so a weak guess never overturns an explicit value.
 _CONFIDENT_DOCTYPE_REASONS = frozenset(
-    {"drawing_title", "index", "via_override", "via_keyword"})
+    {"drawing_title", "index", "drawing_index", "via_override", "via_keyword"})
+
+
+def _index_drawing_class(tokens: list[str]) -> str | None:
+    """Resolve an index/list-vs-drawing collision by the trailing head noun.
+
+    Returns "sheet"/"document"/"drawing" when the title carries both a tabular
+    word (INDEX/LIST/SCHEDULE/REGISTER) and a drawing word, else ``None``.
+    "DRAWING INDEX"/"MASTER DRAWING INDEX" -> sheet; "INDEX DRAWING"/"MODEL
+    INDEX DRAWING" -> drawing; "DRAWING REGISTER" -> document;
+    "LIST OF DRAWINGS" -> sheet (the X-OF-DRAWINGS construction keeps X head).
+    """
+    draw = [i for i, t in enumerate(tokens) if t in DRAWING_HEAD_WORDS]
+    if not draw:
+        return None
+    tab = [(i, "sheet" if t in SHEET_HEAD_WORDS else "document")
+           for i, t in enumerate(tokens)
+           if t in SHEET_HEAD_WORDS or t in DOCUMENT_HEAD_WORDS]
+    if not tab:
+        return None
+    # "X OF DRAWING(S)" — the tabular word X stays the head noun.
+    for i, cls in tab:
+        if i + 1 < len(tokens) and tokens[i + 1] == "OF":
+            return cls
+    last_i, last_cls = max(tab, key=lambda p: p[0])
+    return last_cls if last_i > max(draw) else "drawing"
 
 
 def _detect_doc_type(title: str) -> tuple[str, str]:
     """Infer ``(doc_type, reason)`` from the title alone (no existing value)."""
+    tokens = canonicalize_title(title)
+    # Order-aware index/list-vs-drawing collision wins first: a "DRAWING INDEX"
+    # is a tabular sheet, not a drawing, despite carrying the DRAWING token.
+    collision = _index_drawing_class(tokens)
+    if collision is not None:
+        return collision, "drawing_index"
     # Drawing words (DRAWING/SKETCH/LAYOUT/DIAGRAM) are structural nouns and
     # win over the prose guard — "HAZARDOUS AREA CLASSIFICATION LAYOUT" is a
     # layout drawing, not the prose schedule.
@@ -59,7 +93,7 @@ def _detect_doc_type(title: str) -> tuple[str, str]:
 
 
 def normalize_doc_type(value: str, title: str) -> tuple[str, str]:
-    """Return ``(normalized, reason)``. reason: existing / via_keyword / via_override / drawing_title / index / prose_guard / prefer_sheet / defaulted.
+    """Return ``(normalized, reason)``. reason: existing / via_keyword / via_override / drawing_title / drawing_index / index / prose_guard / prefer_sheet / defaulted.
 
     Explicit ``drawing``/``sheet`` values are always preserved. A generic
     ``document`` is treated as a weak ingest default: if the title confidently

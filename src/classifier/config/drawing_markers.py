@@ -20,11 +20,27 @@ DRAWING_TITLE_MARKERS: tuple[tuple[str, ...], ...] = (
     # A titled DIAGRAM is a drawing (P&ID, SLD, loop / block / wiring /
     # protection & metering / cause-&-effect diagrams all fold to Drawings).
     ("DIAGRAM",),
-    # A SCHEME is a drawing (vendor scheme / single-line scheme).
-    ("SCHEME",),
+    # An ISOMETRIC is a drawing even without the DRAWING token. (Plural
+    # ISOMETRICS routes via the ISO type override; this covers the singular.)
+    ("ISOMETRIC",),
 )
+# NOTE: PLAN is deliberately excluded above (protects HSE/EXECUTION PLAN), so
+# plot-plan *drawings* rely solely on the DPP->Drawings type mapping. "SCHEME"
+# is likewise not a bare marker (would catch COLOR/CLASSIFICATION/NUMBERING
+# SCHEME prose); only "VENDOR SCHEME" routes to a drawing, via the DWG type
+# override in type_overrides.py.
 
 # An INDEX title is a tabular sheet (INSTRUMENT INDEX, ISO INDEX, ...).
 INDEX_MARKERS: tuple[tuple[str, ...], ...] = (
     ("INDEX",),
 )
+
+# Order-aware index/list-vs-drawing collision. Class markers match position-
+# blind, so they cannot tell "INDEX DRAWING" (a drawing) from "DRAWING INDEX"
+# (a sheet listing drawings). When a title carries BOTH a tabular word and a
+# drawing word, the *trailing* head noun decides the class -- except an
+# "X OF DRAWINGS" construction keeps the tabular word X as the head.
+SHEET_HEAD_WORDS: frozenset[str] = frozenset({"INDEX", "LIST", "SCHEDULE"})
+DOCUMENT_HEAD_WORDS: frozenset[str] = frozenset({"REGISTER"})
+DRAWING_HEAD_WORDS: frozenset[str] = frozenset(
+    {"DRAWING", "DIAGRAM", "SKETCH", "LAYOUT", "ISOMETRIC"})

@@ -130,6 +130,8 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("PROTECTION", "AND", "METERING", "DIAGRAM"),
         ("METERING", "DIAGRAM"),
         ("DEMOLITION",),                # demolition drawings
+        ("VENDOR", "SCHEME"),           # vendor scheme drawings (specific; bare
+                                        # SCHEME excluded to avoid prose schemes)
     ),
     "DPP": (
         ("PLOT", "PLAN"),
@@ -139,10 +141,34 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
     "SPC": (
         ("AGES", "SP"),
     ),
-    # Instruction to Bidders (tender document).
+    # Instruction to Bidders (tender document). Synonyms mirror the ITB
+    # detection set in app/services/sypnosis_zip_structure.py plus the RAG
+    # catalog's ITB↔IFB↔RFP group. Tokens are matched as a contiguous
+    # subsequence of the canonicalized title; canonicalize_title only
+    # depluralizes a fixed set (CALCULATION/DIAGRAM/...), so DOCUMENT and
+    # BIDDER are NOT folded — both singular and plural forms are listed.
     "ITB": (
         ("INSTRUCTION", "TO", "BIDDERS"),
+        ("INSTRUCTION", "TO", "BIDDER"),
         ("ITB",),
+        ("ITT",),                                   # invitation to tender
+        ("RFT",),
+        ("RFP",),
+        ("RFQ",),                                   # request for quotation
+        ("RFI",),                                   # request for information
+        ("IFB",),                                   # invitation for bid
+        ("REQUEST", "FOR", "TENDER"),
+        ("REQUEST", "FOR", "PROPOSAL"),
+        ("REQUEST", "FOR", "QUOTATION"),
+        ("REQUEST", "FOR", "INFORMATION"),
+        ("INVITATION", "TO", "BID"),
+        ("INVITATION", "TO", "TENDER"),
+        ("TENDER", "DOCUMENT"),
+        ("TENDER", "DOCUMENTS"),
+        ("BIDDING", "DOCUMENT"),
+        ("BIDDING", "DOCUMENTS"),
+        ("BID", "DOCUMENT"),
+        ("BID", "DOCUMENTS"),
     ),
     # Single line diagram, often abbreviated SLD (frequently inside parens).
     "DSL": (

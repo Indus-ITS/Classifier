@@ -76,6 +76,16 @@ def test_datasheet_and_spec_remain_documents():
     assert normalize_doc_type("document", "AGES-SP-01-002 Rev.1-STEEL")[0] == "document"
 
 
+def test_vendor_scheme_is_drawing_bare_scheme_is_not():
+    assert normalize_doc_type("document", "App-1.2 Vendor Scheme Motor Feeder")[0] == "drawing"
+    # bare SCHEME is not a drawing marker (prose schemes stay documents)
+    assert normalize_doc_type("document", "Document Numbering Scheme")[0] == "document"
+
+
+def test_isometric_singular_is_drawing():
+    assert normalize_doc_type("document", "Piping Isometric SH-01")[0] == "drawing"
+
+
 def test_full_record_loop_diagram_is_drawing():
     res = classify_record(Record(
         title="AD41-16.0-I-61943 - Instrument Loop Diagram", doc_type="document"))

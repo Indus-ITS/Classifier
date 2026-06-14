@@ -10,9 +10,17 @@ def test_standard_drawing_titles_are_drawing():
     assert _cls("STANDARD DRAWING ANCHOR BOLT DETAILS") == "drawing"
 
 
-def test_drawing_wins_over_index_and_list():
+def test_index_drawing_collision_is_order_aware():
+    # The trailing head noun decides the class when a title carries both a
+    # tabular word and a drawing word.
     assert _cls("3D MODEL DESIGN AREA/MODEL INDEX DRAWING AREA-2") == "drawing"
-    assert _cls("STANDARD DRAWING MEMBER LIST") == "drawing"
+    assert _cls("STANDARD DRAWING MEMBER LIST") == "sheet"   # LIST is the head
+    assert _cls("DRAWING INDEX") == "sheet"
+    assert _cls("MASTER DRAWING INDEX") == "sheet"
+    assert _cls("INDEX OF DRAWINGS") == "sheet"              # X OF DRAWINGS
+    assert _cls("LIST OF DRAWINGS") == "sheet"
+    assert _cls("DRAWING REGISTER") == "document"            # register -> document
+    assert _cls("INDEX DRAWING") == "drawing"                # DRAWING is the head
 
 
 def test_sketch_title_is_drawing():
