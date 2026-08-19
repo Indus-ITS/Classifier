@@ -60,7 +60,7 @@ TYPE_TO_BUCKET: dict = {
     "PID": "Drawings", "PFD": "Drawings", "PSF": "Drawings", "DGA": "Drawings",
     "DSD": "Drawings", "DWG": "Drawings", "DAL": "Drawings", "DWD": "Drawings",
     "DSL": "Drawings", "DBD": "Drawings", "DCE": "Drawings", "DHZ": "Drawings",
-    "DPP": "Drawings", "MSD": "Drawings",
+    "DPP": "Drawings", "MSD": "Drawings", "LEG": "Drawings",
     "DAS": "Datasheets",
     "SPC": "Specifications", "STD": "Specifications",
     "CAL": "Calculations",

@@ -41,15 +41,19 @@ _CONFIDENT_DOCTYPE_REASONS = frozenset(
 
 
 def _index_drawing_class(tokens: list[str]) -> str | None:
-    """Resolve an index/list-vs-drawing collision by the trailing head noun.
+    """Resolve an index/list-vs-drawing collision by which noun governs.
 
     Returns "sheet"/"document"/"drawing" when the title carries both a tabular
     word (INDEX/LIST/SCHEDULE/REGISTER) and a drawing word, else ``None``.
-    "DRAWING INDEX"/"MASTER DRAWING INDEX" -> sheet; "INDEX DRAWING"/"MODEL
-    INDEX DRAWING" -> drawing; "DRAWING REGISTER" -> document;
-    "LIST OF DRAWINGS" -> sheet (the X-OF-DRAWINGS construction keeps X head).
+
+    A drawing word WINS (the title is a drawing) unless a tabular word directly
+    governs the drawings -- either "DRAWING <TAB>" (the drawing word immediately
+    precedes it, e.g. "DRAWING INDEX", "DRAWING REGISTER") or "<TAB> OF DRAWINGS"
+    ("LIST OF DRAWINGS"). Those governed forms are a list/index *of* drawings, so
+    a sheet/document. Otherwise the drawing wins: "STANDARD DRAWING MEMBER LIST"
+    and "MODEL INDEX DRAWING" are drawings despite carrying a tabular word.
     """
-    draw = [i for i, t in enumerate(tokens) if t in DRAWING_HEAD_WORDS]
+    draw = {i for i, t in enumerate(tokens) if t in DRAWING_HEAD_WORDS}
     if not draw:
         return None
     tab = [(i, "sheet" if t in SHEET_HEAD_WORDS else "document")
@@ -57,12 +61,11 @@ def _index_drawing_class(tokens: list[str]) -> str | None:
            if t in SHEET_HEAD_WORDS or t in DOCUMENT_HEAD_WORDS]
     if not tab:
         return None
-    # "X OF DRAWING(S)" — the tabular word X stays the head noun.
     for i, cls in tab:
-        if i + 1 < len(tokens) and tokens[i + 1] == "OF":
+        # "<TAB> OF DRAWINGS" or "DRAWING <TAB>" -> the tabular word governs.
+        if (i + 1 < len(tokens) and tokens[i + 1] == "OF") or (i - 1) in draw:
             return cls
-    last_i, last_cls = max(tab, key=lambda p: p[0])
-    return last_cls if last_i > max(draw) else "drawing"
+    return "drawing"
 
 
 def _detect_doc_type(title: str) -> tuple[str, str]:

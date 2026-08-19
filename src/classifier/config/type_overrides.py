@@ -27,6 +27,8 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("PIPING", "AND", "INSTRUMENTATION"),
         ("PIPING", "&", "INSTRUMENTATION", "DIAGRAM"),
         ("PIPING", "AND", "INSTRUMENT", "DIAGRAM"),
+        ("P", "AND", "ID"),     # spelled-out P&ID (ADNOC filename style)
+        ("P", "&", "ID"),
     ),
     "PFD": (
         ("PROCESS", "FLOW", "DIAGRAM"),
@@ -53,11 +55,17 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("PIPING", "GENERAL", "ARRANGEMENT"),
         ("GADS",),          # general arrangement drawings (GADs Construction)
         ("GAD",),
+        ("PIPING", "GA"),       # piping general arrangement (GA abbreviated)
+        ("GA", "CONSTRUCTION"),
     ),
     "PRO": (
         ("PROCEDURE",),
         ("METHOD", "STATEMENT"),
         ("WORK", "INSTRUCTION"),
+    ),
+    "BOD": (
+        ("DESIGN", "BASIS"),        # basis of design (PIPING/PROCESS/HSE DESIGN BASIS)
+        ("BASIS", "OF", "DESIGN"),
     ),
     "TBE": (
         ("TBE",),
@@ -68,6 +76,7 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
     "ISO": (
         ("ISOMETRIC",),
         ("ISOMETRICS",),
+        ("ISOMETRICDRAWING",),  # concatenated in some filename-style titles
     ),
     "MTO": (
         ("MTO",),
@@ -81,7 +90,9 @@ HARD_OVERRIDES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("INSTRUMENT", "DATASHEET"),
         ("ELECTRICAL", "DATASHEET"),
         ("VALVE", "DS"),        # "<tag>_Valve DS" filename style
-        ("LEGEND", "SHEET"),    # legend sheets
+    ),
+    "LST": (
+        ("LINE", "LIST"),
     ),
     "PHL": (
         ("PHILOSOPHY",),

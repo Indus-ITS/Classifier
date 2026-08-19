@@ -42,6 +42,22 @@ def pick_type_with_overrides(title: str) -> dict:
         result["reason"] = "none"
         return result
 
+    # Phase 0: legend priority tier. A title naming a LEGEND is a legend
+    # drawing regardless of any competing type signal (P&ID, block diagram,
+    # datasheet). Checked before HARD_OVERRIDES because that loop's
+    # longest-phrase tie-break cannot express a cross-type priority
+    # ("PIPING & INSTRUMENT" (3 tokens) would otherwise beat LEGEND). LEG is
+    # kept as a unique type so a downstream consumer can select legends out
+    # for symbol extraction; doc_type folds to "drawing" via
+    # TYPE_TO_BUCKET["LEG"]. LEGENDS is listed explicitly because the
+    # canonicalizer does not depluralize it.
+    if "LEGEND" in tokens or "LEGENDS" in tokens:
+        return {
+            "type": "LEG", "score": float("inf"),
+            "runner_up": "", "runner_up_score": 0.0,
+            "n_phrases": 1, "confidence": "high", "reason": "override",
+        }
+
     # Phase 1: hard overrides (longest phrase wins; alpha tie-break).
     override_hits: list[tuple[int, str]] = []
     for type_code, phrases in HARD_OVERRIDES.items():
@@ -76,11 +92,36 @@ def pick_type_with_overrides(title: str) -> dict:
     result = pick_type(scores)
     result["reason"] = "scored" if result["confidence"] != "none" else "none"
 
-    # Phase 5: DRAWING / SKETCH fallback.
-    if result["confidence"] == "none":
-        if "DRAWING" in tokens or "SKETCH" in tokens:
+    # Phase 5: definitive structural-token fallback. A title naming a
+    # DRAWING/SKETCH (-> DWG) or an INDEX (-> IDX) carries a structural signal
+    # strong enough to type it, even when the learned scorer produced only a
+    # sub-threshold ("low") guess. Fires whenever the pick is not high
+    # confidence -- was gated on "none" only, which left a "low" dead zone
+    # where an explicit DRAWING title still dropped to a type miss
+    # (fill_type accepts "high" only). The ambiguous both-tokens case
+    # ("DRAWING INDEX") is left to the scorer to avoid a DWG type on a
+    # sheet-class index or vice-versa.
+    if result["confidence"] != "high":
+        DRAW_WORDS = ("DRAWING", "SKETCH")
+        TAB_WORDS = ("INDEX", "LIST", "SCHEDULE", "REGISTER")
+        draw_idx = {i for i, t in enumerate(tokens) if t in DRAW_WORDS}
+        tab_idx = [i for i, t in enumerate(tokens) if t in TAB_WORDS]
+        # A tabular word governs the drawings ("DRAWING <TAB>" / "<TAB> OF
+        # DRAWINGS") -> leave the scored type (LST/SCH/...). Otherwise a drawing
+        # word wins (mirrors classify._index_drawing_class so type and doc_type
+        # stay consistent), and a bare INDEX resolves to IDX.
+        governed = any((j - 1) in draw_idx or
+                       (j + 1 < len(tokens) and tokens[j + 1] == "OF")
+                       for j in tab_idx)
+        if draw_idx and not governed:
             return {
                 "type": "DWG", "score": float("inf"),
+                "runner_up": "", "runner_up_score": 0.0,
+                "n_phrases": 1, "confidence": "high", "reason": "fallback",
+            }
+        if tab_idx and not draw_idx and any(tokens[j] == "INDEX" for j in tab_idx):
+            return {
+                "type": "IDX", "score": float("inf"),
                 "runner_up": "", "runner_up_score": 0.0,
                 "n_phrases": 1, "confidence": "high", "reason": "fallback",
             }

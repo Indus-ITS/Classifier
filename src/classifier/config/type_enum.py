@@ -21,6 +21,7 @@ KNOWN_TYPES: frozenset[str] = frozenset({
     'DWG',
     'IDX',
     'ISO',
+    'LEG',
     'LST',
     'MSD',
     'MTO',
